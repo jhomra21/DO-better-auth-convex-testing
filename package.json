@@ -1,0 +1,49 @@
+{
+  "name": "skeumorph-icongen",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3000",
+    "start": "vite --port 3000",
+    "build": "bun install && vite build",
+    "serve": "vite preview",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push:sqlite",
+    "api:dev": "wrangler dev api/index.ts",
+    "auth:migrate": "bunx @better-auth/cli generate"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.5",
+    "@kobalte/core": "^0.13.9",
+    "@libsql/client": "^0.15.7",
+    "@libsql/kysely-libsql": "^0.4.1",
+    "@tailwindcss/vite": "^4.1.7",
+    "@tanstack/router-plugin": "^1.120.5",
+    "@tanstack/solid-query": "^5.76.0",
+    "@tanstack/solid-router": "^1.120.5",
+    "@tanstack/solid-router-devtools": "^1.120.6",
+    "bearer": "^0.0.20",
+    "better-auth": "^1.2.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "convex": "^1.24.1",
+    "drizzle-orm": "^0.43.1",
+    "hono": "^4.7.10",
+    "solid-js": "^1.9.7",
+    "solid-transition-group": "^0.3.0",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss": "^4.1.7",
+    "tailwindcss-animate": "^1.0.7",
+    "wrangler": "^4.16.1"
+  },
+  "devDependencies": {
+    "@better-auth/cli": "^1.2.8",
+    "@cloudflare/workers-types": "^4.20250524.0",
+    "@types/node": "^22.15.21",
+    "drizzle-kit": "^0.31.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-solid": "^2.11.6"
+  }
+}
