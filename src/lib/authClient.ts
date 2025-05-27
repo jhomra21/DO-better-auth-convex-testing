@@ -1,10 +1,9 @@
 import { createAuthClient } from "better-auth/client";
 import { getSession as getSessionFromApi } from './api';
+import { getApiUrl } from './utils';
 
-// Define API URL based on environment
-export const API_URL = import.meta.env.DEV 
-    ? "http://127.0.0.1:8787" // Local worker URL
-    : "https://better-auth-api-cross-origin.jhonra121.workers.dev"; // Replace with your actual production worker URL
+// Use getApiUrl() directly instead of storing in a variable
+// to avoid circular dependency issues
 
 // Function to save the token with logging
 function saveToken(token: string | null) {
@@ -21,7 +20,7 @@ function getToken(): string {
 
 // Create auth client with cross-domain support
 export const authClient = createAuthClient({
-    baseURL: `${API_URL}/api/auth`, // Ensure this matches your backend auth route base
+    baseURL: `${getApiUrl()}/api/auth`, // Ensure this matches your backend auth route base
     fetchOptions: {
         // Essential for cross-domain cookies
         credentials: 'include',
@@ -43,7 +42,7 @@ export const authClient = createAuthClient({
                         saveToken(responseData.token);
                     }
                 }).catch(err => {
-                    console.log("Could not parse response as JSON:", err);
+                    console.error("Could not parse response as JSON:", err);
                 });
             }
         },
@@ -100,7 +99,7 @@ export function setAuthToken(token: string): void {
 // Enhanced login function that ensures credentials are included
 export async function enhancedLogin(email: string, password: string): Promise<any> {
     try {
-        const response = await fetch(`${API_URL}/api/auth/sign-in/email`, {
+        const response = await fetch(`${getApiUrl()}/api/auth/sign-in/email`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -140,7 +139,7 @@ export async function enhancedLogin(email: string, password: string): Promise<an
 // Enhanced signup function with cross-domain support
 export async function enhancedSignup(email: string, password: string, name: string): Promise<any> {
     try {
-        const response = await fetch(`${API_URL}/api/auth/sign-up/email`, {
+        const response = await fetch(`${getApiUrl()}/api/auth/sign-up/email`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -180,39 +179,70 @@ export async function enhancedSignup(email: string, password: string, name: stri
 
 // Enhanced logout function
 export async function enhancedLogout(): Promise<any> {
-    try {
-        await fetch(`${API_URL}/api/auth/sign-out`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({}), // Add empty JSON body
-            credentials: 'include' // Critical for cross-domain cookies
-        });
+    try {        
+        // Get the current token
+        const token = localStorage.getItem('bearer_token');
         
-        // Always clear the token locally
+        if (!token) {
+            // If no token, just clear local state
+            clearAuthToken();
+            return { success: true };
+        }
+        
+        // First try to directly delete the session from the database
+        try {
+            const apiUrl = getApiUrl();
+            const response = await fetch(`${apiUrl}/api/protected/sessions/current`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                // If direct session deletion was successful, clear local state
+                clearAuthToken();
+                return { success: true };
+            }
+        } catch (directDeleteError) {
+            // If direct deletion fails, continue with standard sign-out
+            console.error('Direct session deletion failed, trying standard sign-out');
+        }
+        
+        // Use Better Auth's standard signOut method as fallback
+        try {
+            await authClient.signOut({
+                fetchOptions: {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                }
+            });
+        } catch (authError) {
+            // Even if Better Auth sign-out fails, we should still clear local state
+            console.error('Better Auth sign-out error, clearing local state anyway');
+        }
+        
+        // Always clear the local token regardless of API success
         clearAuthToken();
-        
-        return { error: null };
+        return { success: true };
     } catch (error) {
-        console.error("Enhanced logout error:", error);
-        // Still clear the token locally even on error
+        // Clear token even if there's an error
         clearAuthToken();
-        return { error: null }; // Return success anyway since we cleared local state
+        return { error };
     }
 }
 
 // Google login function
 export async function googleLogin(callbackURL?: string): Promise<any> {
     try {
-        // API server for OAuth callback
-        const apiServerCallback = `${API_URL}/api/auth/callback/google`;
-        
         // Frontend URL to redirect after authentication
         const frontendRedirect = callbackURL || '/';
-        
-        console.log(`Initiating Google login with API callback: ${apiServerCallback}`);
-        console.log(`Frontend redirect after auth: ${frontendRedirect}`);
+       
         
         // Call Better Auth's social sign-in with Google
         await authClient.signIn.social({
@@ -252,7 +282,6 @@ export function handleTokenFromUrl(): void {
         const token = url.searchParams.get('token');
         
         if (token) {
-            console.log('Found token in URL, setting it');
             saveToken(token);
             
             // Remove the token from the URL for security
@@ -274,8 +303,4 @@ export function handleTokenFromUrl(): void {
 export function initAuth(): void {
     // Check if there's a token in the URL
     handleTokenFromUrl();
-    
-    // Log authentication status
-    const hasToken = hasAuthToken();
-    console.log('Authentication initialized, token present:', hasToken);
 } 

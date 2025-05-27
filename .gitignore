@@ -23,3 +23,6 @@ ui.config.json
 .dev.vars
 
 convex/_generated/
+
+# windsurf rules
+.windsurfrules

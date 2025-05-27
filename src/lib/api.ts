@@ -1,4 +1,4 @@
-import { API_URL } from './authClient';
+import { getApiUrl } from './utils';
 
 // Helper function to create authenticated fetch requests
 export function createAuthenticatedFetch() {
@@ -27,7 +27,7 @@ export const authFetch = createAuthenticatedFetch();
 // Helper function to get the current session
 export async function getSession(): Promise<SessionResponse> {
   try {
-    const response = await authFetch(`${API_URL}/session`);
+    const response = await authFetch(`${getApiUrl()}/session`);
     if (response.ok) {
       return await response.json();
     }
@@ -45,10 +45,18 @@ export type SessionResponse = {
     id: string;
     email: string;
     name?: string;
+    emailVerified?: boolean;
+    image?: string;
+    createdAt?: number;
   };
   session?: {
     id: string;
-    userId: string;
-    expiresAt: number;
+    user_id: string; // Matches the database column name
+    expires_at: number; // Matches the database column name
+    token?: string;
+    created_at?: number;
+    updated_at?: number;
+    ip_address?: string;
+    user_agent?: string;
   };
 }; 

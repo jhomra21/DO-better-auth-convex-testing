@@ -3,6 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import type { D1Database } from '@cloudflare/workers-types';
 import * as authSchema from '../../src/db/auth-schema';
 import { drizzle } from 'drizzle-orm/d1';
+import { getApiUrl, getFrontendUrl, getAuthCallbackUrl } from './config';
 
 // Import Env type from the correct location
 type Env = {
@@ -11,6 +12,7 @@ type Env = {
   BETTER_AUTH_URL: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_CLIENT_ID: string;
+  NODE_ENV?: string; // Add NODE_ENV as an optional string property
 };
 
 // Utility function to wrap Better Auth handler with empty body handling
@@ -45,15 +47,10 @@ export const createAuth = (env: Env) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
   
-  // Hard-code the environment based on deployment
-  // For Cloudflare Workers, we'll use a constant instead of trying to detect
-  const isProd = true; // Always assume production for deployed Workers
-  
-  // Define API URL for local development or production
-  const apiUrl = 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
-  
-  // Define frontend URL for redirects after authentication
-  const frontendURL = 'https://convex-better-auth-testing.pages.dev';
+  // Get API and frontend URLs from config helpers
+  const apiUrl = getApiUrl(env);
+  const frontendURL = getFrontendUrl(env);
+  const authCallbackUrl = getAuthCallbackUrl(env);
     
   const auth = betterAuth({
     projectId: 'convex-better-auth',
@@ -63,7 +60,7 @@ export const createAuth = (env: Env) => {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
-        redirectURI: 'https://better-auth-api-cross-origin.jhonra121.workers.dev/api/auth/callback/google'
+        redirectURI: authCallbackUrl
       },
     },
     redirects: {
@@ -88,6 +85,12 @@ export const createAuth = (env: Env) => {
         redirect: true,
         url: frontendURL // This ensures OAuth flows redirect to the frontend
       }
+    },
+    // Configure session management for better sign-out
+    session: {
+      expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
+      updateAge: 60 * 60 * 24, // Update session every 24 hours
+      strategy: "jwt", // Use JWT tokens for sessions
     },
     // Use drizzleAdapter with the initialized db instance
     database: drizzleAdapter(db, {

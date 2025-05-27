@@ -1,6 +1,5 @@
 import { createSignal, createEffect, createResource, onMount } from 'solid-js';
 import { 
-  authClient, 
   enhancedLogin, 
   enhancedSignup, 
   enhancedLogout, 
@@ -8,20 +7,22 @@ import {
   hasAuthToken,
   googleLogin
 } from './authClient';
+import type { SessionResponse } from './api';
 
-// Define types for user and session
+// Define type for user to match Better Auth structure
 export type User = {
   id: string;
   email: string;
   name?: string;
+  emailVerified?: boolean;
+  image?: string;
+  createdAt?: number;
   // Add any other fields from your Better Auth user object
 };
 
-export type Session = {
-  id: string;
-  userId: string;
-  expires: string;
-  // Add any other fields from your Better Auth session object
+// Reuse the session type from SessionResponse in api.ts
+export type Session = SessionResponse['session'] & {
+  // Add any additional properties needed for the frontend
 };
 
 export type AuthState = {
@@ -70,11 +71,23 @@ export function useAuth(): UseAuthReturn {
       const result = await getSession();
       
       if (result && result.authenticated) {
+        // Use the session data directly from the API response
+        const normalizedSession: Session = {
+          id: result.session?.id || '',
+          user_id: result.session?.user_id || '',
+          expires_at: result.session?.expires_at || 0,
+          token: result.session?.token || '',
+          created_at: result.session?.created_at,
+          updated_at: result.session?.updated_at,
+          ip_address: result.session?.ip_address,
+          user_agent: result.session?.user_agent
+        };
+        
         setAuthState({
           isAuthenticated: true,
           isLoading: false,
-          user: result.user,
-          session: result.session,
+          user: result.user || null,
+          session: normalizedSession,
         });
         return result;
       } else {
@@ -134,7 +147,6 @@ export function useAuth(): UseAuthReturn {
     const checkToken = () => {
       const token = localStorage.getItem('bearer_token') || '';
       if (token !== currentToken()) {
-        console.log('Token changed, refreshing session');
         setCurrentToken(token);
         refetchSession();
       }

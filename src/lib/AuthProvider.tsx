@@ -36,7 +36,6 @@ export const AuthProvider: Component<AuthProviderProps> = (props) => {
   // Fallback initialization after timeout
   setTimeout(() => {
     if (!initialized()) {
-      console.log("Auth initialization timeout - forcing initialization");
       setInitialized(true);
     }
   }, 3000);
