@@ -261,9 +261,9 @@ export function handleTokenFromUrl(): void {
             
             // Force a page reload to ensure the app recognizes the new auth state
             // This is a simple but effective way to ensure the app picks up the new token
-            setTimeout(() => {
-                window.location.reload();
-            }, 100);
+            // setTimeout(() => {
+            //     window.location.reload();
+            // }, 100);
         }
     } catch (error) {
         console.error('Error handling token from URL:', error);
