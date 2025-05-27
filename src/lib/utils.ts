@@ -20,7 +20,7 @@ export function getApiUrl(): string {
   } else {
     // In production, use the specific worker URL
     // This must be the exact worker URL to ensure proper CORS and cookie handling
-    return 'https://better-auth-d1-worker.jhonra121.workers.dev';
+    return 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
   }
 }
 

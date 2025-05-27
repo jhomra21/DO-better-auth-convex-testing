@@ -4,7 +4,7 @@ import { getSession as getSessionFromApi } from './api';
 // Define API URL based on environment
 export const API_URL = import.meta.env.DEV 
     ? "http://127.0.0.1:8787" // Local worker URL
-    : "https://better-auth-d1-worker.jhonra121.workers.dev"; // Replace with your actual production worker URL
+    : "https://better-auth-api-cross-origin.jhonra121.workers.dev"; // Replace with your actual production worker URL
 
 // Function to save the token with logging
 function saveToken(token: string | null) {

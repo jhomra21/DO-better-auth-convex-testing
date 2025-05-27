@@ -48,8 +48,9 @@ export const createAuth = (env: Env) => {
   // Define API URL for local development
   const apiUrl = 'http://127.0.0.1:8787';
   // Define frontend URL for redirects after authentication
-  const frontendURL = 'http://localhost:3000';
-  
+  const frontendURL = import.meta.env.PROD 
+  ? 'https://convex-better-auth-testing.pages.dev'
+  : 'http://localhost:3000';  
   const auth = betterAuth({
     projectId: 'convex-better-auth',
     secretKey: env.BETTER_AUTH_SECRET,
@@ -97,7 +98,7 @@ export const createAuth = (env: Env) => {
     emailAndPassword: {
       enabled: true
     },
-    trustedOrigins: ['http://localhost:3000'],
+    trustedOrigins: ['http://localhost:3000', 'https://convex-better-auth-testing.pages.dev'],
     advanced: {
       defaultCookieAttributes: {
         // Configure cookies for cross-domain use

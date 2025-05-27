@@ -37,7 +37,7 @@ app.use('*', cors({
         'http://localhost:5173', 
         'http://127.0.0.1:5173',
         'http://127.0.0.1:3000',
-        'https://convex-testing.pages.dev'
+        'https://convex-better-auth-testing.pages.dev'
     ];
     if (!origin || allowedOrigins.includes(origin)) {
         return origin || '*';
@@ -79,10 +79,14 @@ app.use('*', async (c, next) => {
 // Mount Better Auth handler for all auth routes
 app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
   const auth = c.get('auth');
-  try {
+  const frontendUrl = import.meta.env.PROD 
+          ? 'https://convex-better-auth-testing.pages.dev'
+          : 'http://localhost:3000';
+    
+    try {
     // Apply special headers for CORS
     const headers = new Headers();
-    headers.append('Access-Control-Allow-Origin', c.req.header('Origin') || 'http://localhost:3000');
+    headers.append('Access-Control-Allow-Origin', c.req.header('Origin') || frontendUrl);
     headers.append('Access-Control-Allow-Credentials', 'true');
     headers.append('Access-Control-Expose-Headers', 'Content-Length, Set-Cookie, set-auth-token, Set-Auth-Token');
     
@@ -108,9 +112,12 @@ app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
         const authToken = response.headers.get('set-auth-token') || 
                           response.headers.get('Set-Auth-Token');
         
+        // Determine the frontend URL based on environment
+       
+        
         if (authToken) {
           console.log('Found auth token in response headers, using it for redirect');
-          headers.set('location', `http://localhost:3000/?token=${encodeURIComponent(authToken)}`);
+          headers.set('location', `${frontendUrl}/?token=${encodeURIComponent(authToken)}`);
         } else {
           // If token not in headers, need to find the most recently created session
           // This is necessary because Better Auth doesn't always expose the token in headers
@@ -129,23 +136,26 @@ app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
               console.log('Found token in database:', dbToken);
               // Ensure the token is a string
               if (typeof dbToken === 'string') {
-                headers.set('location', `http://localhost:3000/?token=${encodeURIComponent(dbToken)}`);
+                headers.set('location', `${frontendUrl}/?token=${encodeURIComponent(dbToken)}`);
               } else {
                 console.log('Token in database is not a string:', dbToken);
-                headers.set('location', 'http://localhost:3000/');
+                headers.set('location', frontendUrl);
               }
             } else {
               console.log('No session found in database, using default redirect');
-              headers.set('location', 'http://localhost:3000/');
+              headers.set('location', frontendUrl);
             }
           } catch (dbError) {
             console.error('Error querying database:', dbError);
-            headers.set('location', 'http://localhost:3000/');
+            headers.set('location', frontendUrl);
           }
         }
       } catch (error) {
         console.error('Error handling OAuth callback:', error);
-        headers.set('location', 'http://localhost:3000/sign-in?error=session_error');
+        const errorRedirect = import.meta.env.PROD
+          ? 'https://convex-better-auth-testing.pages.dev/sign-in?error=session_error'
+          : 'http://localhost:3000/sign-in?error=session_error';
+        headers.set('location', errorRedirect);
       }
     }
     
