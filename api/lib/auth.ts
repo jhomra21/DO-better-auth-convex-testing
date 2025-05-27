@@ -45,20 +45,15 @@ export const createAuth = (env: Env) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
   
-  // Check if we're in production by checking the hostname
-  const isProd = typeof self !== 'undefined' && 
-                self.location && 
-                self.location.hostname.includes('pages.dev');
+  // Hard-code the environment based on deployment
+  // For Cloudflare Workers, we'll use a constant instead of trying to detect
+  const isProd = true; // Always assume production for deployed Workers
   
-  // Define API URL for local development
-  const apiUrl = isProd
-    ? 'https://better-auth-api-cross-origin.jhonra121.workers.dev'
-    : 'http://127.0.0.1:8787';
+  // Define API URL for local development or production
+  const apiUrl = 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
   
   // Define frontend URL for redirects after authentication
-  const frontendURL = isProd
-    ? 'https://convex-better-auth-testing.pages.dev'
-    : 'http://localhost:3000';
+  const frontendURL = 'https://convex-better-auth-testing.pages.dev';
     
   const auth = betterAuth({
     projectId: 'convex-better-auth',
@@ -68,7 +63,7 @@ export const createAuth = (env: Env) => {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
-        redirectURI: `${apiUrl}/api/auth/callback/google` // API server callback URL
+        redirectURI: 'https://better-auth-api-cross-origin.jhonra121.workers.dev/api/auth/callback/google'
       },
     },
     redirects: {
@@ -107,7 +102,13 @@ export const createAuth = (env: Env) => {
     emailAndPassword: {
       enabled: true
     },
-    trustedOrigins: ['http://localhost:3000', 'https://convex-better-auth-testing.pages.dev'],
+    trustedOrigins: [
+      'http://localhost:3000', 
+      'http://localhost:4173', 
+      'http://localhost:5173',
+      'https://convex-better-auth-testing.pages.dev',
+      'https://better-auth-api-cross-origin.jhonra121.workers.dev'
+    ],
     advanced: {
       defaultCookieAttributes: {
         // Configure cookies for cross-domain use
