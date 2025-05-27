@@ -46,7 +46,9 @@ export const createAuth = (env: Env) => {
   const db = drizzle(env.DB, { schema: authSchema });
   
   // Define API URL for local development
-  const apiUrl = 'http://127.0.0.1:8787';
+  const apiUrl = import.meta.env.PROD 
+  ? 'https://better-auth-api-cross-origin.jhonra121.workers.dev'
+  : 'http://127.0.0.1:8787';
   // Define frontend URL for redirects after authentication
   const frontendURL = import.meta.env.PROD 
   ? 'https://convex-better-auth-testing.pages.dev'
