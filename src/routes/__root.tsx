@@ -13,6 +13,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip" // Adjusted path
 import { AppSidebar } from '~/components/AppSidebar' // Adjusted path
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools'
+import { Breadcrumbs } from '~/components/Breadcrumbs'
 
 // Define router context type (can be shared or defined in a central types file too)
 export interface RouterContext {
@@ -33,7 +34,7 @@ function RootComponent() {
   };
 
   return (
-
+<div>
       <Transition
         appear={true}
         mode="outin"
@@ -106,7 +107,8 @@ function RootComponent() {
                         <p>Toggle Sidebar</p>
                       </TooltipContent>
                     </Tooltip>
-                    <div class="text-base font-semibold text-slate-700 dark:text-slate-300">
+                    <Breadcrumbs />
+                    {/* <div class="text-base font-semibold text-slate-700 dark:text-slate-300 ml-auto">
                       {(() => {
                         const currentPath = location().pathname;
                         if (currentPath === '/') {
@@ -119,7 +121,7 @@ function RootComponent() {
                         }
                         return 'Page'; // Default fallback if path is not "/" and has no segments
                       })()}
-                    </div>
+                    </div> */}
                   </div>
                   <div class="flex-grow overflow-y-auto p-4 relative">
                     <Suspense fallback={
@@ -161,7 +163,7 @@ function RootComponent() {
      
         </Show> <TanStackRouterDevtools position="bottom-right" />
       </Transition>
-     
+     </div>
     
   )
 }
