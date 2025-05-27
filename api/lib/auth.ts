@@ -45,14 +45,21 @@ export const createAuth = (env: Env) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
   
+  // Check if we're in production by checking the hostname
+  const isProd = typeof self !== 'undefined' && 
+                self.location && 
+                self.location.hostname.includes('pages.dev');
+  
   // Define API URL for local development
-  const apiUrl = import.meta.env.PROD 
-  ? 'https://better-auth-api-cross-origin.jhonra121.workers.dev'
-  : 'http://127.0.0.1:8787';
+  const apiUrl = isProd
+    ? 'https://better-auth-api-cross-origin.jhonra121.workers.dev'
+    : 'http://127.0.0.1:8787';
+  
   // Define frontend URL for redirects after authentication
-  const frontendURL = import.meta.env.PROD 
-  ? 'https://convex-better-auth-testing.pages.dev'
-  : 'http://localhost:3000';  
+  const frontendURL = isProd
+    ? 'https://convex-better-auth-testing.pages.dev'
+    : 'http://localhost:3000';
+    
   const auth = betterAuth({
     projectId: 'convex-better-auth',
     secretKey: env.BETTER_AUTH_SECRET,

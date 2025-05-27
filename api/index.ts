@@ -79,9 +79,12 @@ app.use('*', async (c, next) => {
 // Mount Better Auth handler for all auth routes
 app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
   const auth = c.get('auth');
-  const frontendUrl = import.meta.env.PROD 
-          ? 'https://convex-better-auth-testing.pages.dev'
-          : 'http://localhost:3000';
+  
+  // Check if we're in production by checking the hostname or request URL
+  const isProd = c.req.url.includes('pages.dev');
+  const frontendUrl = isProd
+    ? 'https://convex-better-auth-testing.pages.dev'
+    : 'http://localhost:3000';
     
     try {
     // Apply special headers for CORS
@@ -152,7 +155,7 @@ app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
         }
       } catch (error) {
         console.error('Error handling OAuth callback:', error);
-        const errorRedirect = import.meta.env.PROD
+        const errorRedirect = isProd
           ? 'https://convex-better-auth-testing.pages.dev/sign-in?error=session_error'
           : 'http://localhost:3000/sign-in?error=session_error';
         headers.set('location', errorRedirect);
