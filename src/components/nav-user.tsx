@@ -23,7 +23,7 @@ export const NavUser: Component = () => {
     return {
       name: authUser.name || authUser.email?.split('@')[0] || "User",
       email: authUser.email || "",
-      avatar: authUser.avatar || ""
+      avatar: authUser.image || ""
     }
   })
 
@@ -78,16 +78,21 @@ export const NavUser: Component = () => {
           }
       >
         <DropdownMenu placement={isMobile() ? "top" : "right-start"}>
-          <DropdownMenuTrigger class="w-full flex">
+          <DropdownMenuTrigger class="w-full flex !rounded-xl">
             <SidebarMenuButton
               size="lg"
-              class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground transition-[padding,width] duration-200 ease-in-out flex items-center transform translate-z-0"
+              class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground 
+                     transition-[padding,width,scale,translate] duration-200 ease-in-out flex items-center transform translate-z-0
+                     bg-gradient-to-b from-foreground/1 via-white to-foreground/1 border !border-t-foreground/2 !border-b-foreground/10 border-x-foreground/10
+                     hover:shadow-md hover:shadow-foreground/5 hover:scale-102
+                     active:scale-97 active:shadow-none !rounded-xl
+                    "
               classList={{
                 "p-1 rounded-md w-auto": isSidebarCollapsed() && !isMobile(),
                 "w-full justify-start": !isSidebarCollapsed() || isMobile(),
               }}
             >
-              <Avatar class="h-8 w-8 rounded-lg shrink-0">
+              <Avatar class="h-8 w-8 rounded-lg shrink-0 shadow-sm border border-foreground/5">
                   <Show when={user()?.avatar}>
                     <AvatarImage src={user()?.avatar} alt={user()?.name} />
                 </Show>
@@ -101,7 +106,7 @@ export const NavUser: Component = () => {
                   }}
                 >
                     <span class="truncate font-semibold">{user()?.name}</span>
-                    <span class="truncate text-xs">{user()?.email}</span>
+                    <span class="truncate text-xs text-foreground/60">{user()?.email}</span>
                 </div>
                 <Icon name="chevronupdown" class="ml-auto size-4 shrink-0 transition-opacity duration-200 ease-in-out" 
                   classList={{

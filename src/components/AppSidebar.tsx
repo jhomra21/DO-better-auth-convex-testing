@@ -112,7 +112,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter class="lg:!pb-0 !px-2 !pt-2">
         <NavUser />
       </SidebarFooter>
     </Sidebar>

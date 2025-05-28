@@ -9,9 +9,11 @@ import { QueryClient } from '@tanstack/solid-query'
 import {
   SidebarProvider,
   SidebarTrigger,
-} from '~/components/ui/sidebar' // Adjusted path
-import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip" // Adjusted path
-import { AppSidebar } from '~/components/AppSidebar' // Adjusted path
+  SidebarInset,
+} from '~/components/ui/sidebar' // Added SidebarInset import
+import { Tooltip, TooltipContent, TooltipTrigger } from "~/components/ui/tooltip"
+import { Separator } from "~/components/ui/separator" // Added Separator import
+import { AppSidebar } from '~/components/AppSidebar'
 import { TanStackRouterDevtools } from '@tanstack/solid-router-devtools'
 import { Breadcrumbs } from '~/components/Breadcrumbs'
 
@@ -93,36 +95,23 @@ function RootComponent() {
         >
         
             <SidebarProvider>
-              <div class="flex h-screen w-screen overflow-hidden bg-muted/40 p-2">
+              <div class="flex h-screen w-screen overflow-hidden bg-muted/40">
                 <AppSidebar />
-                <main 
-                  class="flex flex-col mt-0.5 mr-0.5 flex-grow h-full overflow-hidden min-w-0 bg-background rounded-xl shadow-md transition-all duration-150 ease-in-out relative"
-                >
-                  <div class="flex-shrink-0 p-2 border-b border-gray-200 dark:border-gray-700 bg-background/95 backdrop-blur-sm flex items-center gap-x-3 sticky top-0 z-10">
-                    <Tooltip openDelay={500}>
-                      <TooltipTrigger>
-                        <SidebarTrigger />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Toggle Sidebar</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Breadcrumbs />
-                    {/* <div class="text-base font-semibold text-slate-700 dark:text-slate-300 ml-auto">
-                      {(() => {
-                        const currentPath = location().pathname;
-                        if (currentPath === '/') {
-                          return 'Home';
-                        }
-                        const segments = currentPath.split('/').filter(s => s.length > 0);
-                        if (segments.length > 0) {
-                          // Takes the first segment (e.g., "tasks" from "/tasks") and capitalizes it
-                          return segments[0].charAt(0).toUpperCase() + segments[0].slice(1);
-                        }
-                        return 'Page'; // Default fallback if path is not "/" and has no segments
-                      })()}
-                    </div> */}
-                  </div>
+                <SidebarInset class="flex-grow overflow-hidden min-w-0 bg-background rounded-xl shadow-md transition-all duration-150 ease-in-out">
+                  <header class="flex h-16 shrink-0 items-center gap-2 p-2 border-b border-gray-200 dark:border-gray-700 bg-background/95 backdrop-blur-sm sticky top-0 z-10">
+                    <div class="flex items-center gap-2 px-4">
+                      <Tooltip openDelay={500}>
+                        <TooltipTrigger>
+                          <SidebarTrigger class="-ml-1" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Toggle Sidebar</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Separator orientation="vertical" class="mr-2 h-4" />
+                      <Breadcrumbs />
+                    </div>
+                  </header>
                   <div class="flex-grow overflow-y-auto p-4 relative">
                     <Suspense fallback={
                       <div class="w-full h-full flex items-center justify-center">
@@ -156,8 +145,7 @@ function RootComponent() {
                       </Transition>
                     </Suspense>
                   </div>
-                  
-                </main>
+                </SidebarInset>
               </div>
             </SidebarProvider>
      

@@ -1,58 +1,77 @@
-import { useLocation, Link } from '@tanstack/solid-router'
+import { useLocation } from '@tanstack/solid-router'
+import { createMemo, For } from 'solid-js'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "~/components/ui/breadcrumb"
-import { Icon } from '~/components/ui/icon'
+// Icon import kept for when we reintroduce it, but not used in this step
+// import { Icon } from '~/components/ui/icon'
 
 export function Breadcrumbs() {
   const location = useLocation()
 
-  const getBreadcrumbs = () => {
+  const breadcrumbItems = createMemo(() => {
     const currentPath = location().pathname
+    
+    // Special case for home page
     if (currentPath === '/') {
-      return [{ label: 'Home', path: '/', isActive: true }]
+      return [{
+        label: 'Home',
+        path: '/',
+        isActive: true,
+        isLast: true
+      }];
     }
 
-    const segments = currentPath.split('/').filter(s => s.length > 0)
-    const breadcrumbs = [{ label: 'Home', path: '/', isActive: false }]
+    const segments = currentPath.split('/').filter(s => s.length > 0);
+    
+    // For shadcn style, we'll keep at most 2 breadcrumb items
+    // The parent path (if it exists) and the current page
+    if (segments.length === 0) return [];
+    
+    let result = [];
+    
+    // If we have a parent path, add it as the first item
+    if (segments.length > 1) {
+      const parentSegment = segments[segments.length - 2];
+      let parentPath = '/' + segments.slice(0, segments.length - 1).join('/');
+      result.push({
+        label: parentSegment.charAt(0).toUpperCase() + parentSegment.slice(1),
+        path: parentPath,
+        isActive: false,
+        isLast: false
+      });
+    }
+    
+    // Add the current page
+    const currentSegment = segments[segments.length - 1];
+    result.push({
+      label: currentSegment.charAt(0).toUpperCase() + currentSegment.slice(1),
+      path: currentPath,
+      isActive: true,
+      isLast: true
+    });
+    
+    return result;
+  })
 
-    let currentSegmentPath = ''
-    segments.forEach((segment, index) => {
-      currentSegmentPath += `/${segment}`
-      const isLast = index === segments.length - 1
-      
-      breadcrumbs.push({
-        label: segment.charAt(0).toUpperCase() + segment.slice(1),
-        path: currentSegmentPath,
-        isActive: isLast
-      })
-    })
-
-    return breadcrumbs
-  }
 
   return (
-    <Breadcrumb class="ml-2 flex-grow">
+    <Breadcrumb>
       <BreadcrumbList>
-        {getBreadcrumbs().map((crumb, index) => (
+        <For each={breadcrumbItems()}>{(crumb, index) =>
           <>
-            <BreadcrumbItem>
-              {index === 0 ? (
-                <BreadcrumbLink as={Link} href={crumb.path} class="flex items-center">
-                  <Icon name="house" class="h-3.5 w-3.5 mr-1" />
-                  <span>{crumb.label}</span>
-                </BreadcrumbLink>
-              ) : crumb.isActive ? (
+            <BreadcrumbItem class={index() === 0 && !crumb.isLast ? "hidden md:block" : ""}>
+              {crumb.isActive ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink as={Link} href={crumb.path}>
+                <BreadcrumbLink href={crumb.path}>
                   {crumb.label}
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
-            {index < getBreadcrumbs().length - 1 && (
-              <BreadcrumbSeparator />
+            {!crumb.isLast && (
+              <BreadcrumbSeparator class="hidden md:block" />
             )}
           </>
-        ))}
+        }</For>
       </BreadcrumbList>
     </Breadcrumb>
   )
