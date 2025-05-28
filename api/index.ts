@@ -4,6 +4,8 @@ import { createAuth } from './lib/auth';
 import type { D1Database } from '@cloudflare/workers-types';
 import protectedRoutes from './routes/protected';
 import { getFrontendUrl, getSignInErrorUrl } from './lib/config';
+import { notesRouter, notesWebSocketRouter } from './routes/notes';
+import { UserNotesDatabase } from './durable-objects/UserNotesDatabase';
 
 // Define the environment type for Hono
 type Env = {
@@ -13,6 +15,7 @@ type Env = {
     GOOGLE_CLIENT_SECRET: string;
     GOOGLE_CLIENT_ID: string;
     NODE_ENV?: string; // Add NODE_ENV as an optional string property
+    USER_NOTES_DATABASE: DurableObjectNamespace;
     // Add other bindings/variables like GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET if using social providers
     // GITHUB_CLIENT_ID?: string;
     // GITHUB_CLIENT_SECRET?: string;
@@ -233,5 +236,13 @@ app.get('/session', async (c) => {
 
 // Mount protected routes under /api/protected
 app.route('/api/protected', protectedRoutes);
+
+// Add notes routes
+app.route('/api/notes', notesRouter);
+// WebSocket should be under a different path to avoid conflict
+app.route('/api/notes-ws', notesWebSocketRouter);
+
+// Export Durable Object class
+export { UserNotesDatabase };
 
 export default app;

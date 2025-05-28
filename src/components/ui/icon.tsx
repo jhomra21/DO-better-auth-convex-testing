@@ -1,6 +1,6 @@
 import { Show, Switch, Match, splitProps, type ComponentProps } from "solid-js";
 
-export type IconName = "panelLeft" | "panelLeftClose" | "house" | "dumbbell" | "history" | "x" | "database" | "music" | "musicNote" | "server" | "chevronupdown" | "sparkles" | "badgecheck" | "creditcard" | "bell" | "logout" | "gear" | "user" | "login";
+export type IconName = "panelLeft" | "panelLeftClose" | "house" | "dumbbell" | "history" | "x" | "database" | "music" | "musicNote" | "server" | "chevronupdown" | "sparkles" | "badgecheck" | "creditcard" | "bell" | "logout" | "gear" | "user" | "login" | "stickynote";
 
 // Define props for the Icon component
 // We want to accept any standard SVG element attributes
@@ -148,6 +148,13 @@ const LoginIcon = (props: ComponentProps<"svg">) => (
   </svg>
 );
 
+const StickyNoteIcon = (props: ComponentProps<"svg">) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note-icon lucide-sticky-note" {...props}>
+    <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/>
+    <path d="M15 3v4a2 2 0 0 0 2 2h4"/>
+  </svg>
+);
+
 export const Icon = (props: IconProps) => {
   const [local, others] = splitProps(props, ["name", "class", "width", "height"]);
   
@@ -213,6 +220,9 @@ export const Icon = (props: IconProps) => {
       </Match>
       <Match when={local.name === "login"}>
         <LoginIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
+      </Match>
+      <Match when={local.name === "stickynote"}>
+        <StickyNoteIcon width={defaultWidth} height={defaultHeight} class={defaultClass} {...others} />
       </Match>
     </Switch>
   );

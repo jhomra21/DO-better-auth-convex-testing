@@ -16,6 +16,7 @@ import { Route as SignInImport } from './routes/sign-in'
 import { Route as DashboardImport } from './routes/dashboard'
 import { Route as IndexImport } from './routes/index'
 import { Route as DashboardTasksImport } from './routes/dashboard/tasks'
+import { Route as DashboardNotesImport } from './routes/dashboard/notes'
 import { Route as DashboardDatabaseImport } from './routes/dashboard/database'
 
 // Create/Update Routes
@@ -47,6 +48,12 @@ const IndexRoute = IndexImport.update({
 const DashboardTasksRoute = DashboardTasksImport.update({
   id: '/tasks',
   path: '/tasks',
+  getParentRoute: () => DashboardRoute,
+} as any)
+
+const DashboardNotesRoute = DashboardNotesImport.update({
+  id: '/notes',
+  path: '/notes',
   getParentRoute: () => DashboardRoute,
 } as any)
 
@@ -95,6 +102,13 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof DashboardDatabaseImport
       parentRoute: typeof DashboardImport
     }
+    '/dashboard/notes': {
+      id: '/dashboard/notes'
+      path: '/notes'
+      fullPath: '/dashboard/notes'
+      preLoaderRoute: typeof DashboardNotesImport
+      parentRoute: typeof DashboardImport
+    }
     '/dashboard/tasks': {
       id: '/dashboard/tasks'
       path: '/tasks'
@@ -109,11 +123,13 @@ declare module '@tanstack/solid-router' {
 
 interface DashboardRouteChildren {
   DashboardDatabaseRoute: typeof DashboardDatabaseRoute
+  DashboardNotesRoute: typeof DashboardNotesRoute
   DashboardTasksRoute: typeof DashboardTasksRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardDatabaseRoute: DashboardDatabaseRoute,
+  DashboardNotesRoute: DashboardNotesRoute,
   DashboardTasksRoute: DashboardTasksRoute,
 }
 
@@ -127,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
 }
 
@@ -136,6 +153,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
 }
 
@@ -146,6 +164,7 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
 }
 
@@ -157,6 +176,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/dashboard/database'
+    | '/dashboard/notes'
     | '/dashboard/tasks'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -165,6 +185,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/dashboard/database'
+    | '/dashboard/notes'
     | '/dashboard/tasks'
   id:
     | '__root__'
@@ -173,6 +194,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/dashboard/database'
+    | '/dashboard/notes'
     | '/dashboard/tasks'
   fileRoutesById: FileRoutesById
 }
@@ -214,6 +236,7 @@ export const routeTree = rootRoute
       "filePath": "dashboard.tsx",
       "children": [
         "/dashboard/database",
+        "/dashboard/notes",
         "/dashboard/tasks"
       ]
     },
@@ -225,6 +248,10 @@ export const routeTree = rootRoute
     },
     "/dashboard/database": {
       "filePath": "dashboard/database.tsx",
+      "parent": "/dashboard"
+    },
+    "/dashboard/notes": {
+      "filePath": "dashboard/notes.tsx",
       "parent": "/dashboard"
     },
     "/dashboard/tasks": {

@@ -26,3 +26,7 @@ convex/_generated/
 
 # windsurf rules
 .windsurfrules
+
+DURABLE_OBJECTS_MIGRATION_PLAN.md
+
+AGENT.md

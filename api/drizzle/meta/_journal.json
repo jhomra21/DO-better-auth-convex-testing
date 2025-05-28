@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1748471407371,
+      "tag": "0000_illegal_human_cannonball",
+      "breakpoints": true
+    }
+  ]
+}

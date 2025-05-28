@@ -10,8 +10,10 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push:sqlite",
+    "notes:db:generate": "drizzle-kit generate --config api/drizzle.config.ts",
     "api:dev": "wrangler dev api/index.ts",
-    "auth:migrate": "bunx @better-auth/cli generate"
+    "auth:migrate": "bunx @better-auth/cli generate",
+    "deploy": "bun run notes:db:generate && wrangler deploy"
   },
   "dependencies": {
     "@kobalte/core": "^0.13.9",
