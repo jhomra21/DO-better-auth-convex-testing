@@ -2,8 +2,8 @@ import { createFileRoute } from '@tanstack/solid-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
 import { createSignal, createEffect, Show, For, onMount } from 'solid-js';
 import { useAuthContext } from '~/lib/AuthProvider';
-import { useAuthGuard } from '~/lib/authGuard';
 import { getApiUrl } from '~/lib/utils';
+import { protectedLoader, loadSession } from '~/lib/protectedRoute';
 
 // Define types for our API responses
 interface Profile {
@@ -115,19 +115,12 @@ function formatDate(timestamp: number | undefined): string {
 }
 
 // Database management component
-function DatabasePageComponent() {
+function DatabasePage() {
   const queryClient = useQueryClient();
   const auth = useAuthContext();
   
-  // Debug token and refresh session on mount
-  onMount(async () => {
-    try {
-      // First refresh the session to ensure we have the latest state
-      await auth.refreshSession();
-    } catch (error) {
-      console.error('Session/token debug error:', error);
-    }
-  });
+  // Remove redundant session refresh on mount
+  // We're now using cached session data
   
   // Profile editing
   const [editMode, setEditMode] = createSignal(false);
@@ -198,210 +191,196 @@ function DatabasePageComponent() {
         <h2 class="text-xl font-semibold mb-4">Profile Information</h2>
         
         <Show when={profileQuery.isLoading}>
-          <div class="flex items-center justify-center p-4">
-            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          <div class="animate-pulse space-y-4">
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
           </div>
         </Show>
         
         <Show when={profileQuery.isError}>
-          <div class="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-md">
-            Failed to load profile information
+          <div class="text-red-500 p-4 border border-red-300 rounded-md bg-red-50 dark:bg-red-900/20">
+            Error loading profile data. Please try again.
           </div>
         </Show>
         
-        <Show when={profileQuery.data && !editMode()}>
-          <div class="space-y-4">
-            <div class="flex items-start gap-4">
-              <div class="flex-shrink-0">
-                <div class="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                  <Show when={profileQuery.data?.profile?.image} fallback={
-                    <div class="w-full h-full flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30">
-                      <span class="text-lg text-indigo-600 dark:text-indigo-400">
-                        {profileQuery.data?.profile?.name?.[0]?.toUpperCase() || '?'}
-                      </span>
-                    </div>
-                  }>
-                    <img 
-                      src={profileQuery.data?.profile?.image} 
-                      alt="Profile" 
-                      class="w-full h-full object-cover"
-                    />
-                  </Show>
+        <Show when={profileQuery.data?.profile}>
+          <Show
+            when={!editMode()}
+            fallback={
+              <form onSubmit={handleProfileSubmit} class="space-y-4">
+                <div>
+                  <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Name
+                  </label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={name()}
+                    onInput={(e) => setName(e.target.value)}
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700"
+                  />
                 </div>
+                
+                <div>
+                  <label for="imageUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Profile Image URL
+                  </label>
+                  <input
+                    id="imageUrl"
+                    type="text"
+                    value={imageUrl()}
+                    onInput={(e) => setImageUrl(e.target.value)}
+                    class="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700"
+                  />
+                </div>
+                
+                <div class="flex space-x-2">
+                  <button
+                    type="submit"
+                    disabled={updateProfileMutation.isPending}
+                    class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  >
+                    {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditMode(false)}
+                    class="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            }
+          >
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Name</h3>
+                <p class="mt-1 text-lg">{profileQuery.data?.profile?.name}</p>
               </div>
               
-              <div class="flex-grow">
-                <h3 class="text-lg font-medium">{profileQuery.data?.profile?.name}</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{profileQuery.data?.profile?.email}</p>
-                <div class="mt-1 text-xs">
-                  <span class={`inline-flex items-center px-2 py-0.5 rounded-full ${
-                    profileQuery.data?.profile?.emailVerified 
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                      : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                  }`}>
-                    {profileQuery.data?.profile?.emailVerified ? 'Verified' : 'Not Verified'}
-                  </span>
-                </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  Member since {formatDate(profileQuery.data?.profile?.createdAt)}
+              <div>
+                <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Email</h3>
+                <p class="mt-1 text-lg">{profileQuery.data?.profile?.email}</p>
+              </div>
+              
+              <div>
+                <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Account Created</h3>
+                <p class="mt-1">{formatDate(profileQuery.data?.profile?.createdAt)}</p>
+              </div>
+              
+              <div>
+                <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Email Verified</h3>
+                <p class="mt-1">
+                  {profileQuery.data?.profile?.emailVerified ? (
+                    <span class="text-green-600 dark:text-green-400">Verified</span>
+                  ) : (
+                    <span class="text-red-600 dark:text-red-400">Not Verified</span>
+                  )}
                 </p>
               </div>
             </div>
             
-            <div class="flex justify-end">
-              <button 
+            <div class="mt-4">
+              <button
                 onClick={() => setEditMode(true)}
-                class="px-3 py-1.5 text-sm bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/30 dark:text-indigo-400 rounded-md transition-colors"
+                class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Edit Profile
               </button>
             </div>
-          </div>
-        </Show>
-        
-        <Show when={editMode()}>
-          <form onSubmit={handleProfileSubmit} class="space-y-4">
-            <div>
-              <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                value={name()}
-                onInput={(e) => setName(e.target.value)}
-                class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                required
-              />
-            </div>
-            
-            <div>
-              <label for="imageUrl" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Profile Image URL
-              </label>
-              <input
-                id="imageUrl"
-                type="url"
-                value={imageUrl()}
-                onInput={(e) => setImageUrl(e.target.value)}
-                class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              />
-            </div>
-            
-            <div class="flex justify-end space-x-3">
-              <button
-                type="button"
-                onClick={() => setEditMode(false)}
-                class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-300 rounded-md transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={updateProfileMutation.isPending}
-                class="px-3 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </form>
+          </Show>
         </Show>
       </section>
       
-      {/* Sessions Section */}
-      <section class="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm p-6">
-        <h2 class="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-200">Active Sessions</h2>
+      {/* Active Sessions Section */}
+      <section class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+        <h2 class="text-xl font-semibold mb-4">Active Sessions</h2>
         
         <Show when={sessionsQuery.isLoading}>
-          <div class="flex items-center justify-center p-4">
-            <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-500"></div>
+          <div class="animate-pulse space-y-4">
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
+            <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-4/6"></div>
           </div>
         </Show>
         
         <Show when={sessionsQuery.isError}>
-          <div class="bg-red-50/70 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-md">
-            Failed to load session information
+          <div class="text-red-500 p-4 border border-red-300 rounded-md bg-red-50 dark:bg-red-900/20">
+            Error loading session data. Please try again.
           </div>
         </Show>
         
-        <Show when={sessionsQuery.data}>
-          <div class="space-y-2">
-            <For each={sessionsQuery.data?.sessions}>
-              {(session) => {
-                const isCurrentSession = session.id === auth.session()?.id;
-                
-                return (
-                  <div class={`p-3 rounded-lg transition-all ${isCurrentSession ? 'bg-indigo-50/70 dark:bg-indigo-900/20 border-l-4 border-indigo-400 dark:border-indigo-500' : 'bg-gray-50/70 dark:bg-gray-800/70 hover:bg-gray-100/80 dark:hover:bg-gray-700/50'}`}>
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div class="flex-grow">
-                        <div class="flex items-center gap-2">
-                          <div class="text-gray-600 dark:text-gray-300 text-sm font-medium truncate max-w-[250px]">
-                            {session.user_agent || 'Unknown Device'}
-                          </div>
-                          {isCurrentSession && (
-                            <span class="text-xs px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full">Current</span>
-                          )}
-                        </div>
-                        <div class="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          <div class="flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span>Created {formatDate(session.created_at)}</span>
-                          </div>
-                          <div class="flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span>Expires {formatDate(session.expires_at)}</span>
-                          </div>
-                          <Show when={session.ip_address}>
-                            <div class="flex items-center gap-1 group relative">
-                              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                              </svg>
-                              <span class="truncate max-w-[100px] cursor-help">IP: {session.ip_address?.split('.').slice(0, 2).join('.')}.***.***</span>
-                              <div class="absolute bottom-full left-0 mb-1 hidden group-hover:block bg-gray-800 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
-                                Full IP: {session.ip_address}
-                              </div>
-                            </div>
-                          </Show>
-                        </div>
-                      </div>
-                      <Show when={!isCurrentSession}>
+        <Show when={sessionsQuery.data?.sessions}>
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead class="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Device/Browser
+                  </th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    IP Address
+                  </th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Created
+                  </th>
+                  <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Expires
+                  </th>
+                  <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <For each={sessionsQuery.data?.sessions}>
+                  {(session) => (
+                    <tr>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {session.user_agent || 'Unknown Device'}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {session.ip_address || 'Unknown IP'}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {formatDate(session.created_at)}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        {formatDate(session.expires_at)}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button
                           onClick={() => handleRevokeSession(session.id)}
                           disabled={revokeSessionMutation.isPending}
-                          class="text-xs px-3 py-1 bg-red-50 hover:bg-red-100 text-red-600 dark:bg-red-900/20 dark:hover:bg-red-900/30 dark:text-red-400 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          class="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300 focus:outline-none focus:underline disabled:opacity-50"
                         >
                           Revoke
                         </button>
-                      </Show>
-                    </div>
-                  </div>
-                );
-              }}
-            </For>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+            
+            <Show when={sessionsQuery.data?.sessions?.length === 0}>
+              <div class="text-center py-4 text-gray-500 dark:text-gray-400">
+                No active sessions found.
+              </div>
+            </Show>
           </div>
-          
-          <Show when={sessionsQuery.data?.sessions?.length === 0}>
-            <div class="text-center py-8 text-gray-500 dark:text-gray-400">
-              No active sessions found
-            </div>
-          </Show>
         </Show>
       </section>
     </div>
   );
 }
 
-// Wrapper component that applies the auth guard
-function ProtectedDatabasePage() {
-  useAuthGuard({ requireAuth: true });
-  return <DatabasePageComponent />;
-}
-
 export const Route = createFileRoute('/database')({
-  component: ProtectedDatabasePage,
-  preload: true,
+  component: DatabasePage,
+  beforeLoad: () => protectedLoader(),
+  loader: async () => {
+    // This happens after the sync check but before component render
+    return await loadSession();
+  },
 });

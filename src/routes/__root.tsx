@@ -36,7 +36,7 @@ function RootComponent() {
   };
 
   return (
-<div>
+<div class="h-screen w-screen">
       <Transition
         appear={true}
         mode="outin"

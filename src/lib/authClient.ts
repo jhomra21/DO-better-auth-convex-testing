@@ -1,7 +1,6 @@
 import { createAuthClient } from "better-auth/client";
 import { getSession as getSessionFromApi } from './api';
 import { getApiUrl } from './utils';
-
 // Use getApiUrl() directly instead of storing in a variable
 // to avoid circular dependency issues
 
@@ -303,4 +302,33 @@ export function handleTokenFromUrl(): void {
 export function initAuth(): void {
     // Check if there's a token in the URL
     handleTokenFromUrl();
+}
+
+/**
+ * Cached session fetch using TanStack Query
+ * This will be used to efficiently cache the session data
+ */
+export function getCachedSession() {
+  const queryClient = window.__QUERY_CLIENT //useQueryClient()
+  
+  if (!queryClient) {
+    console.warn("Query client not found in global scope, session caching disabled");
+    // Fall back to direct API call if query client isn't available
+    return getSession();
+  }
+  
+  // Try to get cached session data
+  const cachedData = queryClient.getQueryData(['auth', 'session']);
+  
+  if (cachedData) {
+    return Promise.resolve(cachedData);
+  }
+  
+  // If no cached data, fetch and cache it
+  return queryClient.fetchQuery({
+    queryKey: ['auth', 'session'],
+    queryFn: getSession,
+    staleTime: 5 * 60 * 1000, // Consider session data fresh for 5 minutes    cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+  });
 } 

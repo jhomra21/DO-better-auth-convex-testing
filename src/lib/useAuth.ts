@@ -225,21 +225,29 @@ export function useAuth(): UseAuthReturn {
   // Logout function
   const logout = async (): Promise<void> => {
     setAuthState(prev => ({ ...prev, isLoading: true }));
-    
     try {
-      // Use our enhanced logout function
       await enhancedLogout();
       
-      // Update auth state after logout
+      // Clear the session cache
+      window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+      
       setAuthState({
         isAuthenticated: false,
         isLoading: false,
         user: null,
         session: null,
       });
+      
+      setAuthReady(true);
     } catch (error) {
       console.error("Logout error:", error);
-      setAuthState(prev => ({ ...prev, isLoading: false }));
+      // Still update state even if there was an error
+      setAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        session: null,
+      });
     }
   };
 
@@ -271,6 +279,8 @@ export function useAuth(): UseAuthReturn {
 
   // Function to refresh the session
   const refreshSession = async (): Promise<void> => {
+    // Invalidate the session cache to force a fresh fetch
+    window.__QUERY_CLIENT?.invalidateQueries({ queryKey: ['auth', 'session'] });
     await refetchSession();
   };
 

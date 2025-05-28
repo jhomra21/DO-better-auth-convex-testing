@@ -5,6 +5,7 @@ import { createFileRoute } from '@tanstack/solid-router';
 import { useAuthGuard } from '../lib/authGuard';
 import { hasAuthToken } from '../lib/authClient';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import { publicOnlyLoader } from "~/lib/protectedRoute";
 
 const SignUpComponent: Component = () => {
   const [name, setName] = createSignal('');
@@ -221,6 +222,7 @@ function PublicSignUpPage() {
 
 export const Route = createFileRoute('/sign-up')({
   component: PublicSignUpPage,
+  beforeLoad: () => publicOnlyLoader(),
 });
 
 // Default export is no longer needed

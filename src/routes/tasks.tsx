@@ -26,6 +26,7 @@ import {
   deleteTask 
 } from '../lib/task-actions';
 import { useAuthGuard } from "~/lib/authGuard";
+import { protectedLoader, loadSession } from '~/lib/protectedRoute';
 
 function TasksPageComponent() {
   const queryClient = useQueryClient();
@@ -294,11 +295,20 @@ function ProtectedTasksPage() {
 
 export const Route = createFileRoute('/tasks')({
   component: ProtectedTasksPage,
+  beforeLoad: () => protectedLoader(),
   loader: async ({ context: { queryClient } }) => {
-    return queryClient.ensureQueryData({
+    // First load the session (using cached session data)
+    const sessionData = await loadSession();
+    
+    // Then pre-fetch tasks data
+    await queryClient.ensureQueryData({
       queryKey: ['tasks'],
       queryFn: getTasks,
-    })
+    });
+    
+    return {
+      session: sessionData,
+      // Tasks will be available via the query cache
+    };
   },
-  preload: true,
 }); 

@@ -33,6 +33,8 @@ const queryClient = new QueryClient({
   },
 });
 
+// Make queryClient globally accessible for session caching
+window.__QUERY_CLIENT = queryClient;
 
 // Create router with the generated routeTree and provide context
 const router = createRouter({
@@ -55,7 +57,12 @@ declare module '@tanstack/solid-router' {
     router: typeof router
   }
 }
-
+// Add type declaration for global queryClient
+declare global {
+  interface Window {
+    __QUERY_CLIENT: typeof queryClient;
+  }
+}
 function MainApp() {
   return (
     <QueryClientProvider client={queryClient}>
