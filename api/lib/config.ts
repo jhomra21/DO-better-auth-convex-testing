@@ -12,8 +12,8 @@ type Env = {
  */
 export function getFrontendUrl(env: Env): string {
   return env.NODE_ENV === 'development' || !env.NODE_ENV
-    ? 'http://localhost:3000'
-    : 'https://convex-better-auth-testing.pages.dev';
+    ? 'http://localhost:3000/dashboard'
+    : 'https://convex-better-auth-testing.pages.dev/dashboard';
 }
 
 /**

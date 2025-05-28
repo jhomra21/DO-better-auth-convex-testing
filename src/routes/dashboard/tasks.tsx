@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/solid-router';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/solid-query';
 import { For, Show, createSignal, createEffect, onCleanup } from 'solid-js';
-import { api } from '../../convex/_generated/api';
-import type { Id } from '../../convex/_generated/dataModel';
-import { convex } from '../lib/convex';
+import { api } from '../../../convex/_generated/api';
+import type { Id } from '../../../convex/_generated/dataModel';
+import { convex } from '../../lib/convex';
 import {
   Table,
   TableBody,
@@ -24,7 +24,7 @@ import {
   addTask, 
   updateTask, 
   deleteTask 
-} from '../lib/task-actions';
+} from '../../lib/task-actions';
 import { useAuthGuard } from "~/lib/authGuard";
 import { protectedLoader, loadSession } from '~/lib/protectedRoute';
 
@@ -293,7 +293,7 @@ function ProtectedTasksPage() {
   return <TasksPageComponent />;
 }
 
-export const Route = createFileRoute('/tasks')({
+export const Route = createFileRoute('/dashboard/tasks')({
   component: ProtectedTasksPage,
   beforeLoad: () => protectedLoader(),
   loader: async ({ context: { queryClient } }) => {

@@ -1,6 +1,7 @@
 import { useLocation } from '@tanstack/solid-router'
 import { createMemo, For } from 'solid-js'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "~/components/ui/breadcrumb"
+import { Link } from '@tanstack/solid-router'
 // Icon import kept for when we reintroduce it, but not used in this step
 // import { Icon } from '~/components/ui/icon'
 
@@ -62,7 +63,7 @@ export function Breadcrumbs() {
               {crumb.isActive ? (
                 <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink href={crumb.path}>
+                <BreadcrumbLink as={Link} to={crumb.path}>
                   {crumb.label}
                 </BreadcrumbLink>
               )}

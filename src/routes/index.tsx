@@ -1,73 +1,49 @@
-import { createSignal, type Component, Show } from 'solid-js';
-import { useAuthContext } from '../lib/AuthProvider';
-import { createFileRoute } from '@tanstack/solid-router';
-import { Link } from '@tanstack/solid-router';
+import { createFileRoute, Link } from '@tanstack/solid-router';
+import type { Component } from 'solid-js';
+import { Show, createMemo } from 'solid-js';
+import { GlobalAuth } from '~/lib/AuthProvider';
+import { publicOnlyLoader } from '~/lib/protectedRoute';
 
 const HomePage: Component = () => {
-  const auth = useAuthContext();
-  const [isLoggingOut, setIsLoggingOut] = createSignal(false);
-  
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await auth.logout();
-    } catch (error) {
-      console.error("Logout error:", error);
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
+  const isAuthenticated = createMemo(() => GlobalAuth.isAuthenticated());
   
   return (
-    <div class="p-6">
-      <h1 class="text-3xl font-bold mb-6">Data & Auth Management</h1>
-      
-      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 class="text-xl font-semibold mb-4">Authentication Status</h2>
-        
-        <Show
-          when={auth.isAuthenticated()}
-          fallback={
-            <div>
-              <p class="mb-4">You are not logged in.</p>
-              <div class="space-x-2">
-                <Link 
-                  to="/sign-in" 
-                  class="text-indigo-600 hover:text-indigo-800"
+    <div class="p-6 min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 text-white">
+      <div class="text-center space-y-8">
+        <h1 class="text-6xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-blue-500">
+          Welcome!
+        </h1>
+        <p class="text-xl text-slate-300 max-w-md mx-auto">
+          This is a simple landing page. Navigate to your desired section.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+          <Show
+            when={isAuthenticated()}
+            fallback={(
+              <>
+                <Link
+                  to="/sign-in"
+                  class="px-8 py-3 font-semibold rounded-lg bg-sky-500 hover:bg-sky-600 transition-colors duration-200 text-white shadow-lg hover:shadow-sky-500/50 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-opacity-75"
                 >
                   Sign In
                 </Link>
-                <Link 
-                  to="/sign-up" 
-                  class="text-indigo-600 hover:text-indigo-800"
+                <Link
+                  to="/sign-up"
+                  class="px-8 py-3 font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors duration-200 text-white shadow-lg hover:shadow-blue-600/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
                 >
                   Sign Up
                 </Link>
-              </div>
-            </div>
-          }
-        >
-          <div>
-            <p class="mb-2">You are logged in as: <span class="font-semibold">{auth.user()?.email || 'Unknown User'}</span></p>
-            <button
-              onClick={handleLogout}
-              disabled={isLoggingOut()}
-              class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded disabled:opacity-50"
+              </>
+            )}
+          >
+            <Link
+              to="/dashboard"
+              class="px-8 py-3 font-semibold rounded-lg bg-green-500 hover:bg-green-600 transition-colors duration-200 text-white shadow-lg hover:shadow-green-500/50 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-75"
             >
-              {isLoggingOut() ? 'Logging out...' : 'Sign Out'}
-            </button>
-          </div>
-        </Show>
-      </div>
-      
-      <div class="bg-white rounded-lg shadow-md p-6">
-        <h2 class="text-xl font-semibold mb-4">Test Protected Route</h2>
-        <button 
-          class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded disabled:opacity-50"
-          disabled={!auth.isAuthenticated()}
-        >
-          Fetch Protected Data
-        </button>
+              Go to Dashboard
+            </Link>
+          </Show>
+        </div>
       </div>
     </div>
   );
@@ -75,4 +51,6 @@ const HomePage: Component = () => {
 
 export const Route = createFileRoute('/')({
   component: HomePage,
+  // Allow authenticated users to access home page by setting skipRedirect to true
+  beforeLoad: () => publicOnlyLoader({ skipRedirect: true }),
 });

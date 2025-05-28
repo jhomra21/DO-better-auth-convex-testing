@@ -13,14 +13,15 @@ import {
   SidebarMenuItem,
   useSidebar
 } from './ui/sidebar';
-import { routeTree, type FileRoutesByFullPath } from '../routeTree.gen';
+import { type FileRoutesByFullPath } from '../routeTree.gen';
 import { NavUser } from './nav-user';
 
-const routeMetadata: Partial<Record<keyof FileRoutesByFullPath, { name: string; iconName: IconName }>> = {
-  '/': { name: 'Home', iconName: 'house' },
-  '/tasks': { name: 'Tasks', iconName: 'database' },
-  '/database': { name: 'Database', iconName: 'server' },
+const routeMetadata: Partial<Record<keyof FileRoutesByFullPath, { name: string; iconName: IconName; isSidebarItem?: boolean }>> = {
+  '/dashboard': { name: 'Home', iconName: 'house', isSidebarItem: true },
+  '/dashboard/tasks': { name: 'Tasks', iconName: 'database', isSidebarItem: true },
+  '/dashboard/database': { name: 'Database', iconName: 'server', isSidebarItem: true },
   // Add more route metadata here as your application grows
+  // Only items with isSidebarItem: true will be shown
 };
 
 export function AppSidebar() {
@@ -30,22 +31,19 @@ export function AppSidebar() {
   const currentPath = createMemo(() => location().pathname);
 
   const generatedNavRoutes = createMemo(() => {
-    if (!routeTree.children) {
-      return [];
-    }
-    return Object.values(routeTree.children)
-      .map(route => {
-        const metadata = routeMetadata[route.id as keyof FileRoutesByFullPath];
-        if (metadata) {
-          return {
-            path: route.id, // route.id is the full path for these routes
-            name: metadata.name,
-            iconName: metadata.iconName,
-          };
-        }
-        return null;
-      })
-      .filter(Boolean) as { path: string; name: string; iconName: IconName }[];
+    return Object.entries(routeMetadata)
+      .filter(([, metadata]) => metadata.isSidebarItem)
+      .map(([path, metadata]) => ({
+        path: path as string, // Cast because keys are from FileRoutesByFullPath
+        name: metadata.name,
+        iconName: metadata.iconName,
+      }))
+      .sort((a, b) => {
+        // Ensure 'Home' (/dashboard) comes first if desired
+        if (a.path === '/dashboard') return -1;
+        if (b.path === '/dashboard') return 1;
+        return a.name.localeCompare(b.name); // Otherwise, sort alphabetically by name
+      });
   });
 
   const handleLinkClick = () => {
@@ -112,7 +110,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter class="lg:!pb-0 !px-2 !pt-2">
+      <SidebarFooter class="md:!pb-0 lg:!pb-2 !px-2 !pt-2">
         <NavUser />
       </SidebarFooter>
     </Sidebar>

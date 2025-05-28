@@ -1,5 +1,20 @@
-import { createContext, useContext, type JSX, type Component, createEffect, createSignal, Show } from 'solid-js';
+import { createContext, useContext, type JSX, type Component, createEffect, createSignal, Show, onMount, onCleanup } from 'solid-js';
 import { useAuth, type UseAuthReturn } from '~/lib/useAuth'; 
+import { createRoot } from 'solid-js';
+
+// Create a global auth state that can be accessed across the app
+// This is the key to solving the navigation issue
+export const GlobalAuth = createRoot(() => {
+  const [isAuthenticated, setIsAuthenticated] = createSignal(false);
+  const [user, setUser] = createSignal<any>(null);
+  
+  return {
+    isAuthenticated,
+    setIsAuthenticated,
+    user,
+    setUser
+  };
+});
 
 // Define the type for the auth context
 export type AuthContextType = UseAuthReturn;
@@ -26,19 +41,35 @@ export const AuthProvider: Component<AuthProviderProps> = (props) => {
   const [initialized, setInitialized] = createSignal(false);  
   const auth = useAuth(); // This hook will provide all auth state and methods
   
-  // Set initialized when auth is ready
+  // Combine auth state sync and initialization in a single effect
   createEffect(() => {
-    if (auth.authReady()) {
+    // Access these reactive values to create proper dependencies
+    const isAuthReady = auth.authReady();
+    const isAuthenticated = auth.isAuthenticated();
+    const userData = auth.user();
+    
+    // Update global auth state when local auth state changes
+    GlobalAuth.setIsAuthenticated(isAuthenticated);
+    GlobalAuth.setUser(userData);
+    
+    // Set initialized when auth is ready
+    if (isAuthReady) {
       setInitialized(true);
     }
   });
   
-  // Fallback initialization after timeout
-  setTimeout(() => {
-    if (!initialized()) {
-      setInitialized(true);
-    }
-  }, 3000);
+  // Setup fallback initialization timer with proper cleanup
+  onMount(() => {
+    const timeoutId = setTimeout(() => {
+      if (!initialized()) {
+        console.log('Auth initialization timed out, forcing initialized state');
+        setInitialized(true);
+      }
+    }, 3000);
+    
+    // Clean up timeout when component unmounts
+    onCleanup(() => clearTimeout(timeoutId));
+  });
 
   return (
     <AuthContext.Provider value={auth}>

@@ -1,9 +1,8 @@
-import { createSignal, type Component, createEffect } from 'solid-js';
+import { createSignal, type Component, createEffect, createMemo } from 'solid-js';
 import { useRouter, Link } from '@tanstack/solid-router';
-import { useAuthContext } from '../lib/AuthProvider'; // Ensure this path is correct
+import { useAuthContext, GlobalAuth } from '../lib/AuthProvider'; // Import GlobalAuth
 import { createFileRoute } from '@tanstack/solid-router';
 import { useAuthGuard } from '../lib/authGuard';
-import { hasAuthToken } from '../lib/authClient';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import { publicOnlyLoader } from "~/lib/protectedRoute";
 
@@ -18,23 +17,40 @@ const SignUpComponent: Component = () => {
   
   
   const router = useRouter();
-  const auth = useAuthContext(); // Get auth context
+  const auth = useAuthContext();
   
-  // Watch for successful signup and navigate
+  // Create a derived state for authentication status
+  const isAuthenticated = createMemo(() => 
+    GlobalAuth.isAuthenticated() || auth.isAuthenticated()
+  );
+  
+  // Unified effect for navigation after authentication
   createEffect(() => {
-    if (signupSuccess() && auth.isAuthenticated() && auth.authReady() && !navigating()) {
+    // Access all reactive dependencies explicitly
+    const hasSignupSuccess = signupSuccess();
+    const isAuthStatus = isAuthenticated();
+    const isNavigating = navigating();
+    
+    // Only proceed if signup was successful, we're authenticated, and not already navigating
+    if (hasSignupSuccess && isAuthStatus && !isNavigating) {
       setNavigating(true);
       
-      try {
-        // Try using router navigation first
-        router.navigate({ to: "/" });
-      } catch (e) {
-        console.error("Router navigation failed, falling back to window.location", e);
-        // Fallback to direct navigation if router fails
-        window.location.href = "/";
-      }
+      // Navigate to dashboard
+      navigateToDashboard();
     }
   });
+  
+  // Extract navigation logic to a reusable function
+  const navigateToDashboard = () => {
+    try {
+      // Try using router navigation first
+      router.navigate({ to: "/dashboard" });
+    } catch (e) {
+      console.error("Router navigation failed, falling back to window.location", e);
+      // Fallback to direct navigation if router fails
+      window.location.href = "/dashboard";
+    }
+  };
   
   const handleSubmit = async (e: Event) => {
     e.preventDefault();
@@ -47,61 +63,15 @@ const SignUpComponent: Component = () => {
       if (result && result.error) {
         console.error("Signup error:", result.error);
         setError(result.error.message || 'Failed to sign up');
-      } else if (!result || !result.error) {
-        
-        // Instead of navigating immediately, set success flag
-        // This will trigger the createEffect above once auth state updates
+      } else {
+        // Signup was successful
         setSignupSuccess(true);
         
-        // Check if token was received
-        if (hasAuthToken()) {
-          
-          // Create fake user data for immediate state update
-          const fakeUser = {
-            id: "temp-user-id",
-            email: email(),
-            name: name()
-          };
-          
-          const fakeSession = {
-            id: "temp-session-id",
-            userId: "temp-user-id",
-            expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
-          };
-          
-          // Set manual session data for immediate auth state update
-          auth.setManualSessionData({ user: fakeUser, session: fakeSession });
-          
-          // Force immediate navigation
-          setTimeout(() => {
-            if (!navigating()) {
-              setNavigating(true);
-              try {
-                router.navigate({ to: "/" });
-              } catch (e) {
-                console.error("Forced navigation failed, using direct navigation", e);
-                window.location.href = "/";
-              }
-            }
-          }, 100);
-        } else {
-          console.warn("No auth token received after successful signup");
-          
-          // Try to navigate anyway after a short delay
-          setTimeout(() => {
-            if (auth.isAuthenticated() && !navigating()) {
-              setNavigating(true);
-              try {
-                router.navigate({ to: "/" });
-              } catch (e) {
-                console.error("Delayed navigation failed, using direct navigation", e);
-                window.location.href = "/";
-              }
-            }
-          }, 500);
+        // If already authenticated, navigate immediately
+        // Otherwise, the createEffect will handle it when auth state updates
+        if (isAuthenticated()) {
+          navigateToDashboard();
         }
-      } else {
-        setError('An unexpected issue occurred during sign up.');
       }
     } catch (err: any) {
       console.error("Signup exception:", err);
@@ -200,7 +170,7 @@ const SignUpComponent: Component = () => {
           </div>
           
           <div class="mt-6">
-            <GoogleSignInButton callbackURL="/" />
+            <GoogleSignInButton callbackURL="/dashboard" />
           </div>
           
           <div class="text-center text-sm">
@@ -216,7 +186,7 @@ const SignUpComponent: Component = () => {
 };
 
 function PublicSignUpPage() {
-  useAuthGuard({ requireAuth: false, homeRoute: '/' });
+  useAuthGuard({ requireAuth: false, homeRoute: '/dashboard' });
   return <SignUpComponent />;
 }
 

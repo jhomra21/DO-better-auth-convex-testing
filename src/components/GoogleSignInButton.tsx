@@ -1,7 +1,8 @@
 import { createSignal } from 'solid-js';
 import type { Component } from 'solid-js';
-import { useAuthContext } from '~/lib/AuthProvider';
+import { useAuthContext, GlobalAuth } from '~/lib/AuthProvider';
 import { Show } from 'solid-js';
+import { useRouter } from '@tanstack/solid-router';
 
 interface GoogleSignInButtonProps {
   callbackURL?: string;
@@ -10,6 +11,7 @@ interface GoogleSignInButtonProps {
 
 const GoogleSignInButton: Component<GoogleSignInButtonProps> = (props) => {
   const auth = useAuthContext();
+  const router = useRouter();
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -21,6 +23,14 @@ const GoogleSignInButton: Component<GoogleSignInButtonProps> = (props) => {
       const result = await auth.loginWithGoogle(props.callbackURL);
       if (result.error) {
         setError(result.error.message);
+      } else if (GlobalAuth.isAuthenticated() && props.callbackURL) {
+        // If we have global auth state and a callback URL, try router navigation
+        try {
+          router.navigate({ to: props.callbackURL });
+        } catch (e) {
+          console.error("Router navigation failed after Google login, using direct navigation", e);
+          window.location.href = props.callbackURL;
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');

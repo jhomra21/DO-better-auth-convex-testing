@@ -240,7 +240,7 @@ export async function enhancedLogout(): Promise<any> {
 export async function googleLogin(callbackURL?: string): Promise<any> {
     try {
         // Frontend URL to redirect after authentication
-        const frontendRedirect = callbackURL || '/';
+        const frontendRedirect = callbackURL || '/dashboard';
        
         
         // Call Better Auth's social sign-in with Google

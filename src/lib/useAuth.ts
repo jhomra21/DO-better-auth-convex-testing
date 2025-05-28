@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createResource, onMount } from 'solid-js';
+import { createSignal, createEffect, createResource, onMount, onCleanup } from 'solid-js';
 import { 
   enhancedLogin, 
   enhancedSignup, 
@@ -8,6 +8,8 @@ import {
   googleLogin
 } from './authClient';
 import type { SessionResponse } from './api';
+import { setLastAuthSession } from './protectedRoute'; // Import the new function
+import { GlobalAuth } from './AuthProvider';
 
 // Define type for user to match Better Auth structure
 export type User = {
@@ -64,6 +66,9 @@ export function useAuth(): UseAuthReturn {
   // Track if auth is ready (initialization complete)
   const [authReady, setAuthReady] = createSignal(false);
 
+  // Create a signal to track the token
+  const [currentToken, setCurrentToken] = createSignal(localStorage.getItem('bearer_token') || '');
+
   // Create a resource that fetches the session
   const [sessionData, { refetch: refetchSession }] = createResource(async () => {
     try {
@@ -113,15 +118,23 @@ export function useAuth(): UseAuthReturn {
     }
   });
 
-  // Create an effect to update the loading state based on session resource
+  // Combined effect for session data and token tracking
   createEffect(() => {
+    // 1. Update loading state based on session data
     const data = sessionData();
     if (data !== undefined) {
       setAuthState(prev => ({ ...prev, isLoading: false }));
     }
+
+    // 2. Track token changes and refresh session when needed
+    const token = localStorage.getItem('bearer_token') || '';
+    if (token !== currentToken()) {
+      setCurrentToken(token);
+      refetchSession();
+    }
   });
 
-  // Initialize auth on mount
+  // Initialize auth and set up event listeners
   onMount(() => {
     // Check URL for token and refresh session if needed
     const url = new URL(window.location.href);
@@ -131,43 +144,29 @@ export function useAuth(): UseAuthReturn {
     }
     
     // Set a timeout to ensure initialization completes even if there are issues
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (!authReady()) {
         setAuthReady(true);
         setAuthState(prev => ({ ...prev, isLoading: false }));
       }
     }, 2000);
-  });
 
-  // Create a signal to track the token
-  const [currentToken, setCurrentToken] = createSignal(localStorage.getItem('bearer_token') || '');
-
-  // Watch for token changes in localStorage
-  createEffect(() => {
-    const checkToken = () => {
-      const token = localStorage.getItem('bearer_token') || '';
-      if (token !== currentToken()) {
-        setCurrentToken(token);
-        refetchSession();
-      }
-    };
-
-    // Check initially
-    checkToken();
-
-    // Set up a listener for storage events
+    // Set up a listener for storage events (for multi-tab support)
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'bearer_token') {
-        checkToken();
+        const token = localStorage.getItem('bearer_token') || '';
+        setCurrentToken(token);
+        refetchSession();
       }
     };
 
     window.addEventListener('storage', handleStorageChange);
     
     // Clean up
-    return () => {
+    onCleanup(() => {
+      clearTimeout(timeoutId);
       window.removeEventListener('storage', handleStorageChange);
-    };
+    });
   });
 
   // Login function
@@ -175,12 +174,24 @@ export function useAuth(): UseAuthReturn {
     setAuthState(prev => ({ ...prev, isLoading: true }));
     
     try {
-      // Use our enhanced login function
       const result = await enhancedLogin(email, password);
       
       if (!result.error) {
-        // If login was successful, refresh the session
+        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
         await refreshSession();
+        
+        // First immediately update the global auth state
+        GlobalAuth.setIsAuthenticated(true);
+        
+        // Then store the current auth state in lastAuthSession for immediate use by loadSession
+        if (authState().isAuthenticated) {
+          setLastAuthSession({
+            session: authState().session,
+            user: authState().user,
+            authenticated: true
+          });
+        }
+        
         return { error: null };
       } else {
         setAuthState(prev => ({ ...prev, isLoading: false }));
@@ -201,12 +212,24 @@ export function useAuth(): UseAuthReturn {
     setAuthState(prev => ({ ...prev, isLoading: true }));
     
     try {
-      // Use our enhanced signup function
       const result = await enhancedSignup(email, password, name);
       
       if (!result.error) {
-        // If signup was successful, refresh the session
+        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
         await refreshSession();
+        
+        // First immediately update the global auth state
+        GlobalAuth.setIsAuthenticated(true);
+        
+        // Then store the current auth state in lastAuthSession for immediate use by loadSession
+        if (authState().isAuthenticated) {
+          setLastAuthSession({
+            session: authState().session,
+            user: authState().user,
+            authenticated: true
+          });
+        }
+        
         return { error: null };
       } else {
         setAuthState(prev => ({ ...prev, isLoading: false }));
@@ -217,7 +240,7 @@ export function useAuth(): UseAuthReturn {
       return { 
         error: { 
           message: error instanceof Error ? error.message : "Unknown error during signup" 
-        } 
+        }
       };
     }
   };
@@ -230,6 +253,10 @@ export function useAuth(): UseAuthReturn {
       
       // Clear the session cache
       window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+      
+      // Update global auth state
+      GlobalAuth.setIsAuthenticated(false);
+      GlobalAuth.setUser(null);
       
       setAuthState({
         isAuthenticated: false,
@@ -256,12 +283,15 @@ export function useAuth(): UseAuthReturn {
     setAuthState(prev => ({ ...prev, isLoading: true }));
     
     try {
-      // Use our googleLogin function
       const result = await googleLogin(callbackURL);
       
-      // Google login redirects the user, so we won't be refreshing the session here
-      // The session will be loaded when the user returns to the site
       if (!result.error) {
+        // Session handling for Google is primarily on redirect return via onMount
+        
+        // When Google auth succeeds, we'll be redirected back to our app
+        // On redirect return, we should check session and update global auth
+        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+        
         return { error: null };
       } else {
         setAuthState(prev => ({ ...prev, isLoading: false }));

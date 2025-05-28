@@ -1,6 +1,7 @@
 import { useAuthContext } from './AuthProvider';
+import { GlobalAuth } from './AuthProvider';
 import { useRouter } from '@tanstack/solid-router';
-import { createEffect, type Accessor, createSignal, onMount } from 'solid-js';
+import { createEffect, type Accessor, createSignal, onMount, createMemo } from 'solid-js';
 
 interface UseAuthGuardOptions {
   requireAuth?: boolean; 
@@ -23,29 +24,19 @@ export function useAuthGuard({
   const router = useRouter();
   const [guardChecked, setGuardChecked] = createSignal(false);
   
-  // Initial check on mount
-  onMount(() => {
-    
-    // Set a timeout to ensure guard check completes even if auth is never ready
-    setTimeout(() => {
-      if (!guardChecked()) {
-        performGuardCheck();
-      }
-    }, 2000);
-  });
+  // Combine authentication states from both global and context
+  const isAuth = createMemo(() => GlobalAuth.isAuthenticated() || auth.isAuthenticated());
   
-  // Function to perform the actual guard check
-  const performGuardCheck = () => {
-    const isAuth = auth.isAuthenticated();
-    
-    if (requireAuth && !isAuth) {
+  // Handle navigation based on auth state
+  const navigateBasedOnAuth = () => {
+    if (requireAuth && !isAuth()) {
       try {
         router.navigate({ to: signInRoute, replace: true });
       } catch (e) {
         console.error("Router navigation failed in auth guard, using direct navigation", e);
         window.location.href = signInRoute;
       }
-    } else if (!requireAuth && isAuth) {
+    } else if (!requireAuth && isAuth()) {
       try {
         router.navigate({ to: homeRoute, replace: true });
       } catch (e) {
@@ -57,25 +48,39 @@ export function useAuthGuard({
     setGuardChecked(true);
   };
   
-  createEffect(() => {
-    // Only perform redirects when auth is ready and not loading
-    if (auth.authReady() && !auth.isLoading()) {
-      performGuardCheck();
-    } else if (!auth.authReady()) {
+  // Initial check on mount - use global auth state for immediate check
+  onMount(() => {
+    // Perform immediate check using global auth state if available
+    if ((requireAuth && !isAuth()) || (!requireAuth && isAuth())) {
+      navigateBasedOnAuth();
+    } else {
+      // Set a timeout to ensure guard check completes even if auth is never ready
+      setTimeout(() => {
+        if (!guardChecked()) {
+          navigateBasedOnAuth();
+        }
+      }, 2000);
     }
   });
   
-  // Create an effect to check auth state changes
+  // Single unified effect that reacts to auth state changes
   createEffect(() => {
-    // If auth state changes after initial check, perform guard check again
-    if (guardChecked() && auth.authReady()) {
-      performGuardCheck();
+    // This effect depends on:
+    const ready = auth.authReady();
+    const loading = auth.isLoading();
+    
+    // Only perform redirects when auth is ready and not loading
+    if (ready && !loading && !guardChecked()) {
+      navigateBasedOnAuth();
+    } else if (ready && !loading && guardChecked()) {
+      // If auth state changes after initial check, check again
+      navigateBasedOnAuth();
     }
   });
   
   return {
     isLoading: auth.isLoading,
-    isAuthenticated: auth.isAuthenticated,
+    isAuthenticated: isAuth,
     authReady: auth.authReady,
   };
 }

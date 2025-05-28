@@ -137,6 +137,10 @@ export const NavUser: Component = () => {
             <DropdownMenuSeparator />
             
               <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => navigate({ to: "/" })}>
+                  <Icon name="house" class="mr-2 size-4" />
+                  Go to Home Page
+                </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Icon name="user" class="mr-2 size-4" />
                   Profile
