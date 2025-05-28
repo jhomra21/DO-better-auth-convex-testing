@@ -39,7 +39,7 @@ window.__QUERY_CLIENT = queryClient;
 // Create router with the generated routeTree and provide context
 const router = createRouter({
   routeTree,
-  defaultPreload: 'intent',
+  defaultPreload: 'viewport',
   scrollRestoration: true,
   scrollRestorationBehavior: 'smooth',
   // The context needs to be provided to the router instance.

@@ -83,9 +83,9 @@ export const NavUser: Component = () => {
               size="lg"
               class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground 
                      transition-[padding,width,scale,translate] duration-200 ease-in-out flex items-center transform translate-z-0
-                     bg-gradient-to-b from-foreground/1 via-white to-foreground/1 border !border-t-foreground/2 !border-b-foreground/10 border-x-foreground/10
+                     bg-gradient-to-b from-white via-foreground/5 to-foreground/0.5 border !border-t-foreground/3 !border-b-foreground/10 border-x-foreground/10
                      hover:shadow-md hover:shadow-foreground/5 hover:scale-102
-                     active:scale-97 active:shadow-none !rounded-xl
+                     active:scale-95 active:shadow-none !rounded-xl
                     "
               classList={{
                 "p-1 rounded-md w-auto": isSidebarCollapsed() && !isMobile(),

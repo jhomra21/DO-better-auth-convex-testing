@@ -5,6 +5,7 @@ import { createFileRoute } from '@tanstack/solid-router'; // Added import
 import { useAuthGuard } from '../lib/authGuard'; // Added import
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import { publicOnlyLoader } from "~/lib/protectedRoute";
+import { Button } from '~/components/ui/button';
 
 const SignInComponent: Component = () => {
   const [email, setEmail] = createSignal('');
@@ -131,7 +132,8 @@ const SignInComponent: Component = () => {
           </div>
           
           <div>
-            <button
+            <Button
+              variant="sf-compute"
               type="submit"
               disabled={isLoading()}
               class="group relative flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-500 dark:hover:bg-indigo-600 dark:focus:ring-offset-gray-800 disabled:opacity-50"
@@ -145,7 +147,7 @@ const SignInComponent: Component = () => {
                   Signing in...
                 </>
               ) : 'Sign In'}
-            </button>
+            </Button>
           </div>
           
           <div class="relative mt-6">

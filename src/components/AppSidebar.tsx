@@ -79,12 +79,17 @@ export function AppSidebar() {
 
     const linkChildren = children(() => linkContent());
 
+    // Use a less aggressive preload approach
+    // Options: 'intent' | 'viewport' | 'render' | false
+    // Using false for pages with expensive loaders
+    const shouldPreload = route.path === '/dashboard/database' ? false : 'intent';
+
     return (
       <SidebarMenuItem>
         <SidebarMenuButton 
           as={Link} 
           to={route.path} 
-          preload="intent"
+          preload={shouldPreload}
           class="w-full text-left"
           onClick={handleLinkClick}
           tooltip={route.name}
@@ -110,7 +115,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter class="md:!pb-0 lg:!pb-2 !px-2 !pt-2">
+      <SidebarFooter class="md:!pb-0 lg:!pb-0 sm:!pb-2 !px-2 !pt-2">
         <NavUser />
       </SidebarFooter>
     </Sidebar>

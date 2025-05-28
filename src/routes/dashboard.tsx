@@ -54,12 +54,14 @@ import { GlobalAuth } from '~/lib/AuthProvider'
     
     return (
       <div class="h-screen w-screen">
-        <Show when={GlobalAuth.isAuthenticated()} fallback={
-          <div class="h-screen w-screen flex items-center justify-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-            <p class="ml-4">Verifying authentication...</p>
-          </div>
-        }>
+        <Show when={GlobalAuth.isAuthenticated()} 
+        // fallback={
+        //   <div class="h-screen w-screen flex items-center justify-center">
+        //     <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        //     <p class="ml-4">Verifying authentication...</p>
+        //   </div>
+        // }
+        >
           <Transition
             onEnter={(el, done) => {
               const animation = el.animate(
@@ -112,6 +114,7 @@ import { GlobalAuth } from '~/lib/AuthProvider'
                     }>
                       <Transition
                         mode="outin"
+                        // appear={true}
                         onEnter={(el, done) => {
                           const animation = el.animate(
                             [

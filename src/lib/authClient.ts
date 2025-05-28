@@ -1,6 +1,8 @@
 import { createAuthClient } from "better-auth/client";
 import { getSession as getSessionFromApi } from './api';
 import { getApiUrl } from './utils';
+// Remove GlobalAuth import to avoid circular dependency
+// import { GlobalAuth } from './AuthProvider';
 // Use getApiUrl() directly instead of storing in a variable
 // to avoid circular dependency issues
 
@@ -113,6 +115,35 @@ export async function enhancedLogin(email: string, password: string): Promise<an
         
         if (authToken) {
             saveToken(authToken);
+            
+            // Get session data immediately after login to avoid additional requests
+            try {
+                const sessionResponse = await fetch(`${getApiUrl()}/session`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    credentials: 'include'
+                });
+                
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json() as {
+                        authenticated: boolean;
+                        user: any;
+                        session: any;
+                    };
+                    if (sessionData.authenticated) {
+                        return { 
+                            error: null,
+                            user: sessionData.user,
+                            session: sessionData.session,
+                            authenticated: true
+                        };
+                    }
+                }
+            } catch (sessionError) {
+                console.error("Error fetching session after login:", sessionError);
+            }
+            
             return { error: null };
         } else {
             // Try to parse response body for token
@@ -122,6 +153,35 @@ export async function enhancedLogin(email: string, password: string): Promise<an
             const responseData = data as { token?: string, error?: any };
             if (responseData && responseData.token) {
                 saveToken(responseData.token);
+                
+                // Get session data immediately after login
+                try {
+                    const sessionResponse = await fetch(`${getApiUrl()}/session`, {
+                        headers: {
+                            'Authorization': `Bearer ${responseData.token}`
+                        },
+                        credentials: 'include'
+                    });
+                    
+                    if (sessionResponse.ok) {
+                        const sessionData = await sessionResponse.json() as {
+                            authenticated: boolean;
+                            user: any;
+                            session: any;
+                        };
+                        if (sessionData.authenticated) {
+                            return { 
+                                error: null,
+                                user: sessionData.user,
+                                session: sessionData.session,
+                                authenticated: true
+                            };
+                        }
+                    }
+                } catch (sessionError) {
+                    console.error("Error fetching session after login:", sessionError);
+                }
+                
                 return { error: null };
             } else if (responseData && responseData.error) {
                 return { error: responseData.error };
@@ -153,6 +213,35 @@ export async function enhancedSignup(email: string, password: string, name: stri
         
         if (authToken) {
             saveToken(authToken);
+            
+            // Get session data immediately after signup to avoid additional requests
+            try {
+                const sessionResponse = await fetch(`${getApiUrl()}/session`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    credentials: 'include'
+                });
+                
+                if (sessionResponse.ok) {
+                    const sessionData = await sessionResponse.json() as {
+                        authenticated: boolean;
+                        user: any;
+                        session: any;
+                    };
+                    if (sessionData.authenticated) {
+                        return { 
+                            error: null,
+                            user: sessionData.user,
+                            session: sessionData.session,
+                            authenticated: true
+                        };
+                    }
+                }
+            } catch (sessionError) {
+                console.error("Error fetching session after signup:", sessionError);
+            }
+            
             return { error: null };
         } else {
             // Try to parse response body
@@ -162,6 +251,35 @@ export async function enhancedSignup(email: string, password: string, name: stri
             const responseData = data as { token?: string, error?: any };
             if (responseData && responseData.token) {
                 saveToken(responseData.token);
+                
+                // Get session data immediately after signup
+                try {
+                    const sessionResponse = await fetch(`${getApiUrl()}/session`, {
+                        headers: {
+                            'Authorization': `Bearer ${responseData.token}`
+                        },
+                        credentials: 'include'
+                    });
+                    
+                    if (sessionResponse.ok) {
+                        const sessionData = await sessionResponse.json() as {
+                            authenticated: boolean;
+                            user: any;
+                            session: any;
+                        };
+                        if (sessionData.authenticated) {
+                            return { 
+                                error: null,
+                                user: sessionData.user,
+                                session: sessionData.session,
+                                authenticated: true
+                            };
+                        }
+                    }
+                } catch (sessionError) {
+                    console.error("Error fetching session after signup:", sessionError);
+                }
+                
                 return { error: null };
             } else if (responseData && responseData.error) {
                 return { error: responseData.error };
@@ -287,11 +405,41 @@ export function handleTokenFromUrl(): void {
             url.searchParams.delete('token');
             window.history.replaceState({}, document.title, url.toString());
             
-            // Force a page reload to ensure the app recognizes the new auth state
-            // This is a simple but effective way to ensure the app picks up the new token
-            // setTimeout(() => {
-            //     window.location.reload();
-            // }, 100);
+            // Fetch session data and update cache directly
+            if (window.__QUERY_CLIENT) {
+                // Set a temporary loading state
+                window.__QUERY_CLIENT.setQueryData(['auth', 'session'], {
+                    authenticated: true,
+                    isLoading: true
+                });
+                
+                // Fetch session data with the new token
+                fetch(`${getApiUrl()}/session`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    credentials: 'include'
+                })
+                .then(response => response.json())
+                .then(sessionData => {
+                    const typedSessionData = sessionData as {
+                        authenticated: boolean;
+                        user: any;
+                        session: any;
+                    };
+                    
+                    if (typedSessionData.authenticated) {
+                        // Update the cache with the fresh session data
+                        window.__QUERY_CLIENT.setQueryData(['auth', 'session'], typedSessionData);
+                        
+                        // Use the indirect function instead of direct GlobalAuth import
+                        updateGlobalAuthState(true, typedSessionData.user);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching session after token URL extraction:', error);
+                });
+            }
         }
     } catch (error) {
         console.error('Error handling token from URL:', error);
@@ -331,4 +479,24 @@ export function getCachedSession() {
     staleTime: 5 * 60 * 1000, // Consider session data fresh for 5 minutes    cacheTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
   });
+}
+
+// Function to update global auth state indirectly
+// This avoids circular dependencies by accessing GlobalAuth through window
+export function updateGlobalAuthState(isAuthenticated: boolean, user: any) {
+    try {
+        // Access the global auth object via window, which should be safe
+        // This avoids direct imports that would cause circular dependencies
+        if (window && (window as any).__GLOBAL_AUTH) {
+            const globalAuth = (window as any).__GLOBAL_AUTH;
+            if (typeof globalAuth.setIsAuthenticated === 'function') {
+                globalAuth.setIsAuthenticated(isAuthenticated);
+            }
+            if (typeof globalAuth.setUser === 'function') {
+                globalAuth.setUser(user);
+            }
+        }
+    } catch (error) {
+        console.error('Error updating global auth state:', error);
+    }
 } 

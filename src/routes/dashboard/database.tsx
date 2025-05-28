@@ -10,9 +10,20 @@ import {
   formatDate,
 } from '~/lib/databaseService';
 
+// Define types for loader data
+type LoaderData = {
+  initialProfileData: Awaited<ReturnType<typeof fetchProfile>>;
+  initialSessionsData: Awaited<ReturnType<typeof fetchSessions>>;
+};
+
+// Define cache times (in milliseconds)
+const FIVE_MINUTES = 5 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
+
 // Database management component
 function DatabasePage() {
   const queryClient = useQueryClient();
+  const loaderData = Route.useRouteContext() as unknown as LoaderData;
   
   // Profile editing
   const [editMode, setEditMode] = createSignal(false);
@@ -24,6 +35,9 @@ function DatabasePage() {
     queryKey: ['profile'],
     queryFn: fetchProfile,
     retry: 1,
+    initialData: loaderData.initialProfileData,
+    staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
+    gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
   }));
   
   // Fetch sessions data
@@ -31,6 +45,9 @@ function DatabasePage() {
     queryKey: ['sessions'],
     queryFn: fetchSessions,
     retry: 1,
+    initialData: loaderData.initialSessionsData,
+    staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
+    gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
   }));
   
   // Create memoized values for profile data to improve reactivity
@@ -261,8 +278,25 @@ function DatabasePage() {
 export const Route = createFileRoute('/dashboard/database')({
   component: DatabasePage,
   beforeLoad: () => protectedLoader(), // Ensure the user is authenticated
-  loader: async () => {
+  loader: async ({ context }) => {
     // This happens after the sync check but before component render
-    return await loadSession();
+    await loadSession();
+    
+    // Instead of calling fetch directly, use ensureQueryData to respect caching
+    const initialProfileData = await context.queryClient.ensureQueryData({
+      queryKey: ['profile'],
+      queryFn: fetchProfile,
+      staleTime: FIVE_MINUTES,
+      gcTime: ONE_HOUR,
+    });
+    
+    const initialSessionsData = await context.queryClient.ensureQueryData({
+      queryKey: ['sessions'],
+      queryFn: fetchSessions,
+      staleTime: FIVE_MINUTES,
+      gcTime: ONE_HOUR,
+    });
+    
+    return { initialProfileData, initialSessionsData };
   },
 }); 

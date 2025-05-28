@@ -5,12 +5,11 @@ import {
   enhancedLogout, 
   getSession, 
   hasAuthToken,
-  googleLogin
+  googleLogin,
+  updateGlobalAuthState
 } from './authClient';
 import type { SessionResponse } from './api';
 import { setLastAuthSession } from './protectedRoute'; // Import the new function
-import { GlobalAuth } from './AuthProvider';
-
 // Define type for user to match Better Auth structure
 export type User = {
   id: string;
@@ -177,19 +176,36 @@ export function useAuth(): UseAuthReturn {
       const result = await enhancedLogin(email, password);
       
       if (!result.error) {
-        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
-        await refreshSession();
-        
-        // First immediately update the global auth state
-        GlobalAuth.setIsAuthenticated(true);
-        
-        // Then store the current auth state in lastAuthSession for immediate use by loadSession
-        if (authState().isAuthenticated) {
+        // Check if the result includes user and session data
+        if (result.user && result.session && result.authenticated) {
+          // Update auth state directly with the returned data
+          setAuthState({
+            isAuthenticated: true,
+            isLoading: false,
+            user: result.user,
+            session: result.session
+          });
+          
+          // Update global auth state via the utility function
+          updateGlobalAuthState(true, result.user);
+          
+          // Store session for route protection
           setLastAuthSession({
-            session: authState().session,
-            user: authState().user,
+            session: result.session,
+            user: result.user,
             authenticated: true
           });
+          
+          // Update query cache directly instead of refetching
+          window.__QUERY_CLIENT?.setQueryData(['auth', 'session'], {
+            authenticated: true,
+            user: result.user,
+            session: result.session
+          });
+        } else {
+          // Fallback to previous behavior if session data not included
+          window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+          await refreshSession();
         }
         
         return { error: null };
@@ -215,19 +231,36 @@ export function useAuth(): UseAuthReturn {
       const result = await enhancedSignup(email, password, name);
       
       if (!result.error) {
-        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
-        await refreshSession();
-        
-        // First immediately update the global auth state
-        GlobalAuth.setIsAuthenticated(true);
-        
-        // Then store the current auth state in lastAuthSession for immediate use by loadSession
-        if (authState().isAuthenticated) {
+        // Check if the result includes user and session data
+        if (result.user && result.session && result.authenticated) {
+          // Update auth state directly with the returned data
+          setAuthState({
+            isAuthenticated: true,
+            isLoading: false,
+            user: result.user,
+            session: result.session
+          });
+          
+          // Update global auth state via the utility function
+          updateGlobalAuthState(true, result.user);
+          
+          // Store session for route protection
           setLastAuthSession({
-            session: authState().session,
-            user: authState().user,
+            session: result.session,
+            user: result.user,
             authenticated: true
           });
+          
+          // Update query cache directly instead of refetching
+          window.__QUERY_CLIENT?.setQueryData(['auth', 'session'], {
+            authenticated: true,
+            user: result.user,
+            session: result.session
+          });
+        } else {
+          // Fallback to previous behavior if session data not included
+          window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+          await refreshSession();
         }
         
         return { error: null };
@@ -255,8 +288,7 @@ export function useAuth(): UseAuthReturn {
       window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
       
       // Update global auth state
-      GlobalAuth.setIsAuthenticated(false);
-      GlobalAuth.setUser(null);
+      updateGlobalAuthState(false, null);
       
       setAuthState({
         isAuthenticated: false,
@@ -283,15 +315,18 @@ export function useAuth(): UseAuthReturn {
     setAuthState(prev => ({ ...prev, isLoading: true }));
     
     try {
+      // Note: We can't immediately get session data after Google login
+      // as it involves a redirect flow, but we can optimize the return handling
       const result = await googleLogin(callbackURL);
       
       if (!result.error) {
-        // Session handling for Google is primarily on redirect return via onMount
+        // Google auth is special because it redirects to the provider
+        // Just set loading to false, the actual session will be checked
+        // when the user returns from the OAuth provider
+        setAuthState(prev => ({ ...prev, isLoading: false }));
         
-        // When Google auth succeeds, we'll be redirected back to our app
-        // On redirect return, we should check session and update global auth
-        window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
-        
+        // No need to update cache or invalidate queries here - it will be
+        // handled by initAuth and handleTokenFromUrl after redirect
         return { error: null };
       } else {
         setAuthState(prev => ({ ...prev, isLoading: false }));

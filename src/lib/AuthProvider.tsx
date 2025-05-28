@@ -16,6 +16,19 @@ export const GlobalAuth = createRoot(() => {
   };
 });
 
+// Expose GlobalAuth to window for access from other modules without circular dependencies
+if (typeof window !== 'undefined') {
+  (window as any).__GLOBAL_AUTH = GlobalAuth;
+}
+
+// Update type declaration
+declare global {
+  interface Window {
+    __GLOBAL_AUTH: typeof GlobalAuth;
+    __QUERY_CLIENT: any;
+  }
+}
+
 // Define the type for the auth context
 export type AuthContextType = UseAuthReturn;
 
