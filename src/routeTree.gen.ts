@@ -15,9 +15,10 @@ import { Route as SignUpImport } from './routes/sign-up'
 import { Route as SignInImport } from './routes/sign-in'
 import { Route as DashboardImport } from './routes/dashboard'
 import { Route as IndexImport } from './routes/index'
+import { Route as DashboardIndexImport } from './routes/dashboard/index'
 import { Route as DashboardTasksImport } from './routes/dashboard/tasks'
 import { Route as DashboardNotesImport } from './routes/dashboard/notes'
-import { Route as DashboardDatabaseImport } from './routes/dashboard/database'
+import { Route as DashboardAccountImport } from './routes/dashboard/account'
 
 // Create/Update Routes
 
@@ -45,6 +46,12 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const DashboardIndexRoute = DashboardIndexImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+
 const DashboardTasksRoute = DashboardTasksImport.update({
   id: '/tasks',
   path: '/tasks',
@@ -57,9 +64,9 @@ const DashboardNotesRoute = DashboardNotesImport.update({
   getParentRoute: () => DashboardRoute,
 } as any)
 
-const DashboardDatabaseRoute = DashboardDatabaseImport.update({
-  id: '/database',
-  path: '/database',
+const DashboardAccountRoute = DashboardAccountImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => DashboardRoute,
 } as any)
 
@@ -95,11 +102,11 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof SignUpImport
       parentRoute: typeof rootRoute
     }
-    '/dashboard/database': {
-      id: '/dashboard/database'
-      path: '/database'
-      fullPath: '/dashboard/database'
-      preLoaderRoute: typeof DashboardDatabaseImport
+    '/dashboard/account': {
+      id: '/dashboard/account'
+      path: '/account'
+      fullPath: '/dashboard/account'
+      preLoaderRoute: typeof DashboardAccountImport
       parentRoute: typeof DashboardImport
     }
     '/dashboard/notes': {
@@ -116,21 +123,30 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof DashboardTasksImport
       parentRoute: typeof DashboardImport
     }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof DashboardIndexImport
+      parentRoute: typeof DashboardImport
+    }
   }
 }
 
 // Create and export the route tree
 
 interface DashboardRouteChildren {
-  DashboardDatabaseRoute: typeof DashboardDatabaseRoute
+  DashboardAccountRoute: typeof DashboardAccountRoute
   DashboardNotesRoute: typeof DashboardNotesRoute
   DashboardTasksRoute: typeof DashboardTasksRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
-  DashboardDatabaseRoute: DashboardDatabaseRoute,
+  DashboardAccountRoute: DashboardAccountRoute,
   DashboardNotesRoute: DashboardNotesRoute,
   DashboardTasksRoute: DashboardTasksRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
@@ -142,19 +158,20 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof DashboardRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
-  '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/dashboard': typeof DashboardRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
-  '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
+  '/dashboard': typeof DashboardIndexRoute
 }
 
 export interface FileRoutesById {
@@ -163,9 +180,10 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRouteWithChildren
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
-  '/dashboard/database': typeof DashboardDatabaseRoute
+  '/dashboard/account': typeof DashboardAccountRoute
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 
 export interface FileRouteTypes {
@@ -175,27 +193,29 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/sign-in'
     | '/sign-up'
-    | '/dashboard/database'
+    | '/dashboard/account'
     | '/dashboard/notes'
     | '/dashboard/tasks'
+    | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/dashboard'
     | '/sign-in'
     | '/sign-up'
-    | '/dashboard/database'
+    | '/dashboard/account'
     | '/dashboard/notes'
     | '/dashboard/tasks'
+    | '/dashboard'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
     | '/sign-in'
     | '/sign-up'
-    | '/dashboard/database'
+    | '/dashboard/account'
     | '/dashboard/notes'
     | '/dashboard/tasks'
+    | '/dashboard/'
   fileRoutesById: FileRoutesById
 }
 
@@ -235,9 +255,10 @@ export const routeTree = rootRoute
     "/dashboard": {
       "filePath": "dashboard.tsx",
       "children": [
-        "/dashboard/database",
+        "/dashboard/account",
         "/dashboard/notes",
-        "/dashboard/tasks"
+        "/dashboard/tasks",
+        "/dashboard/"
       ]
     },
     "/sign-in": {
@@ -246,8 +267,8 @@ export const routeTree = rootRoute
     "/sign-up": {
       "filePath": "sign-up.tsx"
     },
-    "/dashboard/database": {
-      "filePath": "dashboard/database.tsx",
+    "/dashboard/account": {
+      "filePath": "dashboard/account.tsx",
       "parent": "/dashboard"
     },
     "/dashboard/notes": {
@@ -256,6 +277,10 @@ export const routeTree = rootRoute
     },
     "/dashboard/tasks": {
       "filePath": "dashboard/tasks.tsx",
+      "parent": "/dashboard"
+    },
+    "/dashboard/": {
+      "filePath": "dashboard/index.tsx",
       "parent": "/dashboard"
     }
   }

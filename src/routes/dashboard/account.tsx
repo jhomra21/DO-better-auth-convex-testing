@@ -20,8 +20,8 @@ type LoaderData = {
 const FIVE_MINUTES = 5 * 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
 
-// Database management component
-function DatabasePage() {
+// Account management component
+function AccountPage() {
   const queryClient = useQueryClient();
   const loaderData = Route.useRouteContext() as unknown as LoaderData;
   
@@ -275,8 +275,8 @@ function DatabasePage() {
   );
 }
 
-export const Route = createFileRoute('/dashboard/database')({
-  component: DatabasePage,
+export const Route = createFileRoute('/dashboard/account')({
+  component: AccountPage,
   beforeLoad: () => protectedLoader(), // Ensure the user is authenticated
   loader: async ({ context }) => {
     // This happens after the sync check but before component render
