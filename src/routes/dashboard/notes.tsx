@@ -24,6 +24,7 @@ export default function NotesPage() {
   const [editText, setEditText] = createSignal('');
   const [realtimeNotes, setRealtimeNotes] = createSignal<Note[]>([]);
   const [isWebSocketConnected, setIsWebSocketConnected] = createSignal(false);
+  const [reconnecting, setReconnecting] = createSignal(false);
 
   const notesQuery = useNotesQuery();
   const createNote = useCreateNoteMutation();
@@ -40,14 +41,23 @@ export default function NotesPage() {
 
   onMount(() => {
     // Subscribe to WebSocket updates
-    const unsubscribe = notesAPI.subscribe((updatedNotes) => {
+    const unsubscribeNotes = notesAPI.subscribe((updatedNotes) => {
       setRealtimeNotes(updatedNotes);
-      setIsWebSocketConnected(true);
+      setReconnecting(false);
+    });
+    
+    // Subscribe to connection state changes
+    const unsubscribeConnection = notesAPI.onConnectionStateChange((connected) => {
+      setIsWebSocketConnected(connected);
+      if (!connected) {
+        setReconnecting(true);
+      }
     });
 
     onCleanup(() => {
       // Unsubscribe when component unmounts
-      unsubscribe();
+      unsubscribeNotes();
+      unsubscribeConnection();
     });
   });
 
@@ -56,12 +66,13 @@ export default function NotesPage() {
     if (!text) return;
     
     try {
-      await createNote.mutateAsync(text);
+      // Clear input early for better UX
       setNewNoteText('');
-      // Force refresh in case WebSocket update is slow
-      notesQuery.refetch();
+      await createNote.mutateAsync(text);
     } catch (error) {
       console.error("Error creating note:", error);
+      // Restore the input value on error
+      setNewNoteText(text);
       alert("Failed to create note. Please try again.");
     }
   };
@@ -79,8 +90,6 @@ export default function NotesPage() {
       await updateNote.mutateAsync({ id, text });
       setEditingId(null);
       setEditText('');
-      // Force refresh in case WebSocket update is slow
-      notesQuery.refetch();
     } catch (error) {
       console.error("Error updating note:", error);
       alert("Failed to update note. Please try again.");
@@ -91,8 +100,6 @@ export default function NotesPage() {
     if (confirm('Are you sure you want to delete this note?')) {
       try {
         await deleteNote.mutateAsync(id);
-        // Force refresh in case WebSocket update is slow
-        notesQuery.refetch();
       } catch (error) {
         console.error("Error deleting note:", error);
         alert("Failed to delete note. Please try again.");
@@ -108,11 +115,28 @@ export default function NotesPage() {
       </p>
 
       {/* WebSocket status indicator */}
-      <div class="mb-4">
-        <span class={`inline-block w-3 h-3 rounded-full mr-2 ${isWebSocketConnected() ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+      <div class="mb-4 flex items-center">
+        <span class={`inline-block w-3 h-3 rounded-full mr-2 ${
+          isWebSocketConnected() ? 'bg-green-500' : 
+          reconnecting() ? 'bg-yellow-500' : 'bg-red-500'
+        }`}></span>
         <span class="text-sm text-gray-600">
-          {isWebSocketConnected() ? 'Real-time updates active' : 'Loading real-time updates...'}
+          {isWebSocketConnected() ? 'Real-time updates active' : 
+           reconnecting() ? 'Reconnecting...' : 'Real-time updates unavailable'}
         </span>
+        
+        {/* Manual reconnect button when disconnected */}
+        <Show when={!isWebSocketConnected()}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            class="ml-2"
+            onClick={() => notesAPI.connectWebSocket()}
+            disabled={reconnecting()}
+          >
+            Reconnect
+          </Button>
+        </Show>
       </div>
 
       {/* Create new note */}
@@ -199,28 +223,29 @@ export default function NotesPage() {
       </div>
     </div>
   );
-} 
+}
+
 function ProtectedNotesPage() {
-    useAuthGuard({ requireAuth: true });
-    return <NotesPage />;
-  }
-  
-  export const Route = createFileRoute('/dashboard/notes')({
-    component: ProtectedNotesPage,
-    beforeLoad: () => protectedLoader(),
-    loader: async ({ context: { queryClient } }) => {
-      // First load the session (using cached session data)
-      const sessionData = await loadSession();
-      
-      // Then pre-fetch notes data using the function wrapper
-      await queryClient.ensureQueryData({
-        queryKey: ['notes'],
-        queryFn: getNotes,
-      });
-      
-      return {
-        session: sessionData,
-        // Notes will be available via the query cache
-      };
-    },
-  }); 
+  useAuthGuard({ requireAuth: true });
+  return <NotesPage />;
+}
+
+export const Route = createFileRoute('/dashboard/notes')({
+  component: ProtectedNotesPage,
+  beforeLoad: () => protectedLoader(),
+  loader: async ({ context: { queryClient } }) => {
+    // First load the session (using cached session data)
+    const sessionData = await loadSession();
+    
+    // Then pre-fetch notes data using the function wrapper
+    await queryClient.ensureQueryData({
+      queryKey: ['notes'],
+      queryFn: getNotes,
+    });
+    
+    return {
+      session: sessionData,
+      // Notes will be available via the query cache
+    };
+  },
+}); 

@@ -227,6 +227,10 @@ export class UserNotesDatabase {
             notes: await this.getNotes()
           }));
           break;
+        case 'ping':
+          // Respond to client pings to keep connection alive
+          ws.send(JSON.stringify({ type: 'pong' }));
+          break;
         default:
           ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
       }
