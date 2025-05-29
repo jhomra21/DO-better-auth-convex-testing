@@ -17,6 +17,9 @@ export class UserNotesDatabase {
   private state: DurableObjectState;
   private env: Env;
   private sessions: Set<WebSocket> = new Set();
+  private pendingUpdates: Map<string, { clients: Set<string>, notes: any[], attempts: number, timestamp: number }> = new Map();
+  private clientIds: Map<WebSocket, string> = new Map();
+  private updateInterval: number | null = null;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -33,6 +36,9 @@ export class UserNotesDatabase {
     this._migrate().catch(error => {
       console.error("Background migration failed:", error);
     });
+    
+    // Start the update delivery worker
+    this.startUpdateWorker();
   }
 
   // Notes CRUD operations
@@ -65,148 +71,62 @@ export class UserNotesDatabase {
     return note;
   }
 
-  // Broadcast updated notes to all connected WebSocket clients
-  private async broadcastUpdate(): Promise<void> {
-    if (this.sessions.size === 0) return;
+  // Start a worker that periodically checks for undelivered updates
+  private startUpdateWorker() {
+    if (this.updateInterval !== null) return;
     
-    try {
-      const notes = await this.getNotes();
-      const message = JSON.stringify({
-        type: 'update',
-        notes,
-        timestamp: Date.now()  // Add timestamp to help clients detect out-of-order updates
-      });
+    this.updateInterval = setInterval(() => {
+      this.processUndeliveredUpdates();
+    }, 5000) as unknown as number; // Cast needed for Cloudflare Workers
+  }
+  
+  private stopUpdateWorker() {
+    if (this.updateInterval !== null) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+  }
+  
+  // Process any pending updates that haven't been acknowledged
+  private async processUndeliveredUpdates() {
+    if (this.pendingUpdates.size === 0 || this.sessions.size === 0) return;
+    
+    const now = Date.now();
+    
+    // Check each pending update
+    for (const [updateId, update] of this.pendingUpdates.entries()) {
+      // If update is older than 5 minutes, remove it
+      if (now - update.timestamp > 300000) {
+        this.pendingUpdates.delete(updateId);
+        continue;
+      }
       
-      // Track which sessions received the update successfully
-      const failedSessions: WebSocket[] = [];
+      // If all clients have acknowledged, remove the update
+      if (update.clients.size === 0) {
+        this.pendingUpdates.delete(updateId);
+        continue;
+      }
       
-      // Send to all connected clients
-      this.sessions.forEach(session => {
-        try {
-          if (session.readyState === WebSocket.OPEN) {
-            session.send(message);
-          } else if (session.readyState === WebSocket.CONNECTING) {
-            // Session is still connecting, mark it for retry
-            failedSessions.push(session);
-          } else {
-            // Session is closing or closed, remove it
-            this.sessions.delete(session);
-          }
-        } catch (error) {
-          console.error("Error sending to WebSocket:", error);
-          failedSessions.push(session);
-        }
-      });
-      
-      // Retry sending to any sessions that failed or were connecting
-      if (failedSessions.length > 0) {
-        // Wait a short time to allow connections to establish
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        for (const session of failedSessions) {
+      // Resend to clients who haven't acknowledged
+      for (const [ws, clientId] of this.clientIds.entries()) {
+        if (update.clients.has(clientId) && ws.readyState === WebSocket.OPEN) {
           try {
-            if (session.readyState === WebSocket.OPEN) {
-              session.send(message);
-            } else if (session.readyState !== WebSocket.CONNECTING) {
-              // Remove any sessions that are no longer valid
-              this.sessions.delete(session);
-            }
+            ws.send(JSON.stringify({
+              type: 'update',
+              notes: update.notes,
+              updateId: updateId,
+              timestamp: update.timestamp,
+              isRetry: true,
+              attempt: update.attempts
+            }));
           } catch (error) {
-            console.error("Error in retry sending to WebSocket:", error);
-            // Remove failed session
-            this.sessions.delete(session);
+            console.error(`Error sending retry update to client ${clientId}:`, error);
           }
         }
       }
       
-      // Schedule a delayed rebroadcast to catch any reconnecting clients
-      // This helps with cross-device syncing where connections might be unstable
-      setTimeout(() => {
-        this.rebroadcastToNewSessions(notes);
-      }, 2000);
-      
-    } catch (error) {
-      console.error("Error broadcasting update:", error);
-    }
-  }
-  
-  // Helper to rebroadcast to sessions that might have reconnected
-  private async rebroadcastToNewSessions(notesToBroadcast: any[]): Promise<void> {
-    if (this.sessions.size === 0) return;
-    
-    try {
-      const message = JSON.stringify({
-        type: 'update',
-        notes: notesToBroadcast,
-        timestamp: Date.now(),
-        isRebroadcast: true
-      });
-      
-      // Only send to sessions that are definitely open
-      this.sessions.forEach(session => {
-        try {
-          if (session.readyState === WebSocket.OPEN) {
-            session.send(message);
-          }
-        } catch (error) {
-          console.error("Error in delayed rebroadcast:", error);
-          this.sessions.delete(session);
-        }
-      });
-    } catch (error) {
-      console.error("Error in rebroadcast:", error);
-    }
-  }
-
-  private async _migrate() {
-    try {
-      // First check if the notes table exists
-      const tableExists = await this.tableExists('notes');
-      
-      if (tableExists) {
-        console.log("Notes table already exists, skipping migration");
-        return;
-      }
-      
-      // Skip drizzle migration since it's causing issues
-      // Just create the table directly
-      await this.createNotesTableDirectly();
-      console.log("Created notes table directly");
-    } catch (error: any) {
-      console.error("Error running migration:", error);
-    }
-  }
-  
-  // Helper to check if a table exists
-  private async tableExists(tableName: string): Promise<boolean> {
-    try {
-      const result = await this.db.run(`
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name='${tableName}'
-      `);
-      return result && Array.isArray(result) && result.length > 0;
-    } catch (e) {
-      console.error("Error checking if table exists:", e);
-      return false;
-    }
-  }
-  
-  // Fallback migration if the standard approach fails
-  private async createNotesTableDirectly() {
-    try {
-      await this.db.run(`
-        CREATE TABLE IF NOT EXISTS notes (
-          id TEXT PRIMARY KEY NOT NULL,
-          text TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          created INTEGER NOT NULL,
-          updated INTEGER NOT NULL
-        )
-      `);
-      console.log("Created notes table directly");
-    } catch (e) {
-      console.error("Failed to create notes table directly:", e);
-      throw e;
+      // Increment attempt counter
+      update.attempts++;
     }
   }
 
@@ -218,11 +138,33 @@ export class UserNotesDatabase {
       const webSocketPair = new WebSocketPair();
       const [client, server] = Object.values(webSocketPair);
       
+      // Generate a unique client ID for this connection
+      const clientId = crypto.randomUUID();
+      
       // Add this session to our set of active sessions
       this.sessions.add(server);
+      this.clientIds.set(server, clientId);
       
       // Accept the WebSocket connection
       this.state.acceptWebSocket(server);
+      
+      // Send client ID to the client
+      server.send(JSON.stringify({
+        type: 'connected',
+        clientId
+      }));
+      
+      // Send any pending updates to this new client
+      for (const [updateId, update] of this.pendingUpdates.entries()) {
+        if (update.clients.has(clientId)) {
+          server.send(JSON.stringify({
+            type: 'update',
+            notes: update.notes,
+            updateId,
+            timestamp: update.timestamp
+          }));
+        }
+      }
       
       return new Response(null, {
         status: 101,
@@ -282,9 +224,17 @@ export class UserNotesDatabase {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    // Handle real-time notes updates
     try {
-      const data = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message)) as { type: string };
+      const data = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message)) as { 
+        type: string;
+        updateId?: string;
+      };
+      
+      const clientId = this.clientIds.get(ws);
+      if (!clientId) {
+        console.error("Received message from unknown client");
+        return;
+      }
       
       switch (data.type) {
         case 'subscribe':
@@ -294,10 +244,12 @@ export class UserNotesDatabase {
             notes: await this.getNotes()
           }));
           break;
+          
         case 'ping':
           // Respond to client pings to keep connection alive
           ws.send(JSON.stringify({ type: 'pong' }));
           break;
+          
         case 'refresh':
           // Client is requesting a refresh of data
           ws.send(JSON.stringify({
@@ -305,6 +257,22 @@ export class UserNotesDatabase {
             notes: await this.getNotes()
           }));
           break;
+          
+        case 'ack':
+          // Client is acknowledging receipt of an update
+          if (data.updateId) {
+            const update = this.pendingUpdates.get(data.updateId);
+            if (update) {
+              update.clients.delete(clientId);
+              
+              // If all clients have acknowledged, we can remove the update
+              if (update.clients.size === 0) {
+                this.pendingUpdates.delete(data.updateId);
+              }
+            }
+          }
+          break;
+          
         default:
           ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
       }
@@ -314,29 +282,124 @@ export class UserNotesDatabase {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-    // Remove the session from our set when it's closed
+    // Remove the session and client ID
     this.sessions.delete(ws);
+    this.clientIds.delete(ws);
+    
     console.log(`WebSocket closed for user ${this.userId}: ${code} ${reason}`);
     
-    // If this was an abnormal closure, try to ping all other sessions
-    // to verify they're still alive
-    if (code !== 1000 && code !== 1001) {
-      for (const session of this.sessions) {
-        try {
-          session.send(JSON.stringify({ type: 'healthcheck' }));
-        } catch (e) {
-          // Failed to send, this session is probably dead
-          this.sessions.delete(session);
-          console.log(`Removed dead session for user ${this.userId}`);
-        }
-      }
+    // Stop the update worker if no more sessions
+    if (this.sessions.size === 0) {
+      this.stopUpdateWorker();
     }
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
     console.error(`WebSocket error for user ${this.userId}:`, error);
-    // Remove the session on error
+    // Remove the session and client ID on error
     this.sessions.delete(ws);
+    this.clientIds.delete(ws);
     ws.close(1011, "WebSocket error");
+    
+    // Stop the update worker if no more sessions
+    if (this.sessions.size === 0) {
+      this.stopUpdateWorker();
+    }
+  }
+
+  private async _migrate() {
+    try {
+      // First check if the notes table exists
+      const tableExists = await this.tableExists('notes');
+      
+      if (tableExists) {
+        console.log("Notes table already exists, skipping migration");
+        return;
+      }
+      
+      // Skip drizzle migration since it's causing issues
+      // Just create the table directly
+      await this.createNotesTableDirectly();
+      console.log("Created notes table directly");
+    } catch (error: any) {
+      console.error("Error running migration:", error);
+    }
+  }
+  
+  // Helper to check if a table exists
+  private async tableExists(tableName: string): Promise<boolean> {
+    try {
+      const result = await this.db.run(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='${tableName}'
+      `);
+      return result && Array.isArray(result) && result.length > 0;
+    } catch (e) {
+      console.error("Error checking if table exists:", e);
+      return false;
+    }
+  }
+  
+  // Fallback migration if the standard approach fails
+  private async createNotesTableDirectly() {
+    try {
+      await this.db.run(`
+        CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY NOT NULL,
+          text TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          created INTEGER NOT NULL,
+          updated INTEGER NOT NULL
+        )
+      `);
+      console.log("Created notes table directly");
+    } catch (e) {
+      console.error("Failed to create notes table directly:", e);
+      throw e;
+    }
+  }
+
+  // Broadcast updated notes to all connected WebSocket clients
+  private async broadcastUpdate(): Promise<void> {
+    if (this.sessions.size === 0) return;
+    
+    try {
+      const notes = await this.getNotes();
+      const updateId = crypto.randomUUID();
+      const timestamp = Date.now();
+      
+      // Create a set of clients that need to receive this update
+      const pendingClients = new Set<string>();
+      this.clientIds.forEach(clientId => pendingClients.add(clientId));
+      
+      // Add to pending updates
+      this.pendingUpdates.set(updateId, {
+        clients: pendingClients,
+        notes,
+        attempts: 1,
+        timestamp
+      });
+      
+      const message = JSON.stringify({
+        type: 'update',
+        notes,
+        updateId,
+        timestamp
+      });
+      
+      // Send to all connected clients
+      for (const [ws, clientId] of this.clientIds.entries()) {
+        try {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(message);
+          }
+        } catch (error) {
+          console.error(`Error sending update to client ${clientId}:`, error);
+          // Don't remove from pendingClients - it will be retried
+        }
+      }
+    } catch (error) {
+      console.error("Error broadcasting update:", error);
+    }
   }
 } 

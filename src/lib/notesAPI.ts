@@ -45,6 +45,8 @@ class NotesAPI {
   private updateCallbacks: NotesUpdateCallback[] = [];
   private connectionStateCallbacks: ((connected: boolean) => void)[] = [];
   private _lastUpdateTimestamp: number | null = null;
+  private _clientId: string | null = null;
+  private _receivedUpdates: Set<string> = new Set();
   
   // Track connection state
   private _connected = false;
@@ -158,6 +160,75 @@ class NotesAPI {
     this.setConnectionState(false);
   }
   
+  // Socket event handler for receiving messages
+  private handleWebSocketMessage(event: MessageEvent) {
+    try {
+      const data = JSON.parse(event.data);
+      
+      switch (data.type) {
+        case 'connected':
+          // Store our client ID
+          this._clientId = data.clientId;
+          console.log(`WebSocket connected with client ID: ${this._clientId}`);
+          break;
+          
+        case 'subscribed':
+        case 'update':
+          if (data.notes) {
+            // Store the latest update timestamp
+            const timestamp = data.timestamp || Date.now();
+            
+            // Only update if this is newer than our last update
+            // or if it's an initial subscription
+            if (data.type === 'subscribed' || 
+                !this._lastUpdateTimestamp || 
+                timestamp >= this._lastUpdateTimestamp) {
+              
+              this._lastUpdateTimestamp = timestamp;
+              this.updateCallbacks.forEach(callback => callback(data.notes));
+              
+              // If this is an update with an ID, acknowledge receipt
+              if (data.updateId && !this._receivedUpdates.has(data.updateId)) {
+                this._receivedUpdates.add(data.updateId);
+                // Limit set size to prevent memory leaks
+                if (this._receivedUpdates.size > 100) {
+                  const toDelete = Array.from(this._receivedUpdates)[0];
+                  this._receivedUpdates.delete(toDelete);
+                }
+                
+                // Send acknowledgment
+                if (this.socket?.readyState === WebSocket.OPEN) {
+                  this.socket.send(JSON.stringify({
+                    type: 'ack',
+                    updateId: data.updateId
+                  }));
+                }
+              }
+            } else {
+              console.log(`Ignoring outdated update (${new Date(timestamp).toISOString()})`);
+            }
+          }
+          break;
+          
+        case 'pong':
+          // Handle server pong - connection is alive
+          break;
+          
+        case 'healthcheck':
+          // Server is checking if we're alive, respond with a ping
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ type: 'ping' }));
+          }
+          break;
+          
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  }
+  
   // Make connectWebSocket public so it can be used from components
   public connectWebSocket() {
     // Don't reconnect if already connected or connecting
@@ -199,46 +270,8 @@ class NotesAPI {
       }
     });
     
-    this.socket.addEventListener('message', (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        switch (data.type) {
-          case 'subscribed':
-          case 'update':
-            if (data.notes) {
-              // Store the latest update timestamp
-              const timestamp = data.timestamp || Date.now();
-              
-              // Only update if this is newer than our last update
-              // or if it's an initial subscription
-              if (data.type === 'subscribed' || 
-                  !this._lastUpdateTimestamp || 
-                  timestamp >= this._lastUpdateTimestamp) {
-                
-                this._lastUpdateTimestamp = timestamp;
-                this.updateCallbacks.forEach(callback => callback(data.notes));
-              } else {
-                console.log(`Ignoring outdated update (${new Date(timestamp).toISOString()})`);
-              }
-            }
-            break;
-          case 'pong':
-            // Handle server pong - connection is alive
-            break;
-          case 'healthcheck':
-            // Server is checking if we're alive, respond with a ping
-            if (this.socket?.readyState === WebSocket.OPEN) {
-              this.socket.send(JSON.stringify({ type: 'ping' }));
-            }
-            break;
-          default:
-            break;
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-      }
-    });
+    // Use our consolidated message handler
+    this.socket.addEventListener('message', this.handleWebSocketMessage.bind(this));
     
     this.socket.addEventListener('close', (event) => {
       console.log(`WebSocket closed with code: ${event.code}, reason: ${event.reason}`);
