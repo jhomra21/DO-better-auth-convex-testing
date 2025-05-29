@@ -47,6 +47,27 @@ class NotesAPI {
   private _lastUpdateTimestamp: number | null = null;
   private _clientId: string | null = null;
   private _receivedUpdates: Set<string> = new Set();
+  private _previousNotes: Note[] | null = null;
+  private _deletedNoteIds: Set<string> | null = null;
+  private _editedNoteIds: Set<string> | null = null;
+  
+  // Store clientId in localStorage for persistence across page refreshes
+  private persistClientId(clientId: string) {
+    try {
+      localStorage.setItem('notes_client_id', clientId);
+    } catch (e) {
+      console.error('Failed to persist client ID:', e);
+    }
+  }
+  
+  private getPersistedClientId(): string | null {
+    try {
+      return localStorage.getItem('notes_client_id');
+    } catch (e) {
+      console.error('Failed to get persisted client ID:', e);
+      return null;
+    }
+  }
   
   // Track connection state
   private _connected = false;
@@ -73,7 +94,10 @@ class NotesAPI {
     this.stopHeartbeat(); // Clear any existing interval
     this.pingInterval = window.setInterval(() => {
       if (this.socket?.readyState === WebSocket.OPEN) {
-        this.socket.send(JSON.stringify({ type: 'ping' }));
+        this.socket.send(JSON.stringify({ 
+          type: 'ping',
+          clientId: this._clientId // Include client ID in heartbeats
+        }));
       } else {
         this.reconnect();
       }
@@ -160,18 +184,56 @@ class NotesAPI {
     this.setConnectionState(false);
   }
   
-  // Socket event handler for receiving messages
+  // Handle incoming WebSocket messages
   private handleWebSocketMessage(event: MessageEvent) {
     try {
       const data = JSON.parse(event.data);
+      
+      console.log("WebSocket message received:", data.type);
       
       switch (data.type) {
         case 'connected':
           // Store our client ID
           this._clientId = data.clientId;
+          this.persistClientId(data.clientId);
           console.log(`WebSocket connected with client ID: ${this._clientId}`);
           break;
           
+        case 'identifyRequest':
+          // Server doesn't recognize us, send our stored clientId
+          console.log('Server requested identification');
+          if (this._clientId && this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({
+              type: 'identify',
+              clientId: this._clientId
+            }));
+          } else {
+            // Force reconnection if we don't have a client ID
+            console.log('No client ID available, forcing reconnection');
+            this.cleanupConnection();
+            this.reconnect();
+          }
+          break;
+          
+        case 'identityRecovered':
+          console.log(`Identity recovered: ${data.clientId}`);
+          // Request a refresh to ensure we have the latest data
+          if (this.socket?.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ 
+              type: 'refresh',
+              clientId: this._clientId 
+            }));
+          }
+          break;
+          
+        case 'initialSync':
+          console.log(`Received initial sync with ${data.notes.length} notes`);
+          // Initial data after connecting, always use this
+          this._previousNotes = [...data.notes];
+          this._lastUpdateTimestamp = data.timestamp;
+          this.updateCallbacks.forEach(callback => callback(data.notes));
+          break;
+        
         case 'subscribed':
         case 'update':
           if (data.notes) {
@@ -185,7 +247,70 @@ class NotesAPI {
                 timestamp >= this._lastUpdateTimestamp) {
               
               this._lastUpdateTimestamp = timestamp;
-              this.updateCallbacks.forEach(callback => callback(data.notes));
+        
+              // Special handling for delete operations
+              if (data.operation === 'delete' && data.affectedNoteId) {
+                console.log(`Deletion operation detected for note ID: ${data.affectedNoteId}`);
+                
+                // Initialize deletedNoteIds if needed
+                if (!this._deletedNoteIds) {
+                  this._deletedNoteIds = new Set<string>();
+                }
+                
+                // Track this as a deleted note ID
+                this._deletedNoteIds.add(data.affectedNoteId);
+                
+                // Immediately update local state to remove the deleted note
+                // This prevents any flashing of old content
+                if (this._previousNotes) {
+                  // Filter out the deleted note by ID
+                  const updatedNotes = this._previousNotes.filter(note => 
+                    note.id !== data.affectedNoteId
+                  );
+                  
+                  // If our length changed, we had the note and removed it
+                  if (updatedNotes.length < this._previousNotes.length) {
+                    console.log(`Locally removed deleted note ID: ${data.affectedNoteId}`);
+                    this._previousNotes = updatedNotes;
+                    // Force update all subscribers with our manually filtered notes
+                    this.updateCallbacks.forEach(callback => callback(updatedNotes));
+                    
+                    // Then trigger a full refresh after the UI has updated
+                    setTimeout(() => {
+                      this.forceCompleteRefresh();
+                    }, 100);
+                    
+                    // Skip the standard update flow for deletes
+                    break;
+                  }
+                }
+                
+                // ALWAYS force a refresh for delete operations to ensure consistency
+                this.forceCompleteRefresh();
+              } else if (data.operation === 'update' && data.affectedNoteId) {
+                // For updates, make sure we're applying them correctly by ID
+                console.log(`Update operation detected for note ID: ${data.affectedNoteId}`);
+                
+                // Keep track of edited note IDs
+                if (!this._editedNoteIds) {
+                  this._editedNoteIds = new Set<string>();
+                }
+                this._editedNoteIds.add(data.affectedNoteId);
+                
+                // Apply the update as normal
+                this._previousNotes = [...data.notes];
+                this.updateCallbacks.forEach(callback => callback(data.notes));
+              } else {
+                // Check for length changes to detect potential delete operations
+                if (this._previousNotes && this._previousNotes.length > data.notes.length) {
+                  console.log('Detected possible delete operation via length change, forcing refresh');
+                  this.forceCompleteRefresh();
+                } else {
+                  // Normal operation, update as usual
+                  this._previousNotes = [...data.notes];
+                  this.updateCallbacks.forEach(callback => callback(data.notes));
+                }
+              }
               
               // If this is an update with an ID, acknowledge receipt
               if (data.updateId && !this._receivedUpdates.has(data.updateId)) {
@@ -200,7 +325,8 @@ class NotesAPI {
                 if (this.socket?.readyState === WebSocket.OPEN) {
                   this.socket.send(JSON.stringify({
                     type: 'ack',
-                    updateId: data.updateId
+                    updateId: data.updateId,
+                    clientId: this._clientId
                   }));
                 }
               }
@@ -217,7 +343,10 @@ class NotesAPI {
         case 'healthcheck':
           // Server is checking if we're alive, respond with a ping
           if (this.socket?.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({ type: 'ping' }));
+            this.socket.send(JSON.stringify({ 
+              type: 'ping',
+              clientId: this._clientId
+            }));
           }
           break;
           
@@ -227,6 +356,48 @@ class NotesAPI {
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
     }
+  }
+  
+  // Completely refresh our state from the server bypassing all caches
+  private forceCompleteRefresh() {
+    console.log("Forcing complete refresh of notes state");
+    
+    // First clear any cached data
+    this._previousNotes = null;
+    
+    // Force a direct fetch from the server API
+    this.getNotes(true)
+      .then(notes => {
+        console.log(`Forced refresh got ${notes.length} notes directly from server`);
+        // Manually update our subscribers with the forced fresh data
+        this._previousNotes = [...notes];
+        this.updateCallbacks.forEach(callback => callback(notes));
+      })
+      .catch(error => {
+        console.error("Error during forced refresh:", error);
+      });
+  }
+  
+  // Add a forceRefresh parameter to getNotes
+  async getNotes(forceRefresh = false): Promise<Note[]> {
+    // Add a cache-busting parameter when forcing refresh
+    const url = new URL(`${getApiUrl()}/api/notes`);
+    if (forceRefresh) {
+      url.searchParams.append('_t', Date.now().toString());
+    }
+    
+    const response = await fetch(url.toString(), {
+      headers: this.getHeaders(),
+      // Use no-cache when forcing refresh
+      cache: forceRefresh ? 'no-cache' : 'default'
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch notes');
+    }
+    
+    const data = await response.json() as { notes: Note[] };
+    return data.notes;
   }
   
   // Make connectWebSocket public so it can be used from components
@@ -241,8 +412,20 @@ class NotesAPI {
     // Clean up any existing socket
     this.cleanupConnection();
     
-    // Create new connection with the token
-    this.socket = new WebSocket(`${getWsUrl()}/api/notes-ws/ws?token=${encodeURIComponent(token)}`);
+    // Get persisted client ID if available
+    const persistedClientId = this.getPersistedClientId();
+    if (persistedClientId) {
+      this._clientId = persistedClientId;
+    }
+    
+    // Create new connection with the token and client ID if available
+    const wsUrl = new URL(`${getWsUrl()}/api/notes-ws/ws`);
+    wsUrl.searchParams.append('token', token);
+    if (this._clientId) {
+      wsUrl.searchParams.append('clientId', this._clientId);
+    }
+    
+    this.socket = new WebSocket(wsUrl.toString());
     
     // Set a timeout to detect if connection is stalling
     const connectionTimeout = window.setTimeout(() => {
@@ -261,7 +444,10 @@ class NotesAPI {
       
       if (this.socket?.readyState === WebSocket.OPEN) {
         // Subscribe to notes updates
-        this.socket.send(JSON.stringify({ type: 'subscribe' }));
+        this.socket.send(JSON.stringify({ 
+          type: 'subscribe',
+          clientId: this._clientId // Include our client ID in all messages
+        }));
         // Start heartbeat
         this.startHeartbeat();
         
@@ -328,25 +514,15 @@ class NotesAPI {
   // Request fresh data from the server
   private refreshData() {
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: 'refresh' }));
+      this.socket.send(JSON.stringify({ 
+        type: 'refresh',
+        clientId: this._clientId // Include client ID for proper tracking
+      }));
     }
   }
   
   constructor() {
     this.setupNetworkListeners();
-  }
-
-  async getNotes(): Promise<Note[]> {
-    const response = await fetch(`${getApiUrl()}/api/notes`, {
-      headers: this.getHeaders(),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch notes');
-    }
-    
-    const data = await response.json() as { notes: Note[] };
-    return data.notes;
   }
 
   async createNote(text: string): Promise<Note> {

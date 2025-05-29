@@ -49,7 +49,7 @@ export class UserNotesDatabase {
   async createNote(noteData: Parameters<typeof notes.createNote>[1]): Promise<ReturnType<typeof notes.createNote>> {
     const note = await notes.createNote(this.db, { ...noteData, userId: this.userId });
     // Broadcast update to all connected clients
-    this.broadcastUpdate();
+    this.broadcastUpdate('create', note.id);
     return note;
   }
 
@@ -57,7 +57,7 @@ export class UserNotesDatabase {
     const note = await notes.updateNote(this.db, noteId, this.userId, updates);
     // Broadcast update to all connected clients
     if (note) {
-      this.broadcastUpdate();
+      this.broadcastUpdate('update', note.id);
     }
     return note;
   }
@@ -66,7 +66,7 @@ export class UserNotesDatabase {
     const note = await notes.deleteNote(this.db, noteId, this.userId);
     // Broadcast update to all connected clients
     if (note) {
-      this.broadcastUpdate();
+      this.broadcastUpdate('delete', note.id);
     }
     return note;
   }
@@ -139,7 +139,9 @@ export class UserNotesDatabase {
       const [client, server] = Object.values(webSocketPair);
       
       // Generate a unique client ID for this connection
-      const clientId = crypto.randomUUID();
+      // Extract an existing clientId from the URL if present (for reconnections)
+      const urlClientId = url.searchParams.get('clientId');
+      const clientId = urlClientId || crypto.randomUUID();
       
       // Add this session to our set of active sessions
       this.sessions.add(server);
@@ -165,6 +167,14 @@ export class UserNotesDatabase {
           }));
         }
       }
+      
+      // Also send the current notes state to ensure this client is in sync
+      const notes = await this.getNotes();
+      server.send(JSON.stringify({
+        type: 'initialSync',
+        notes,
+        timestamp: Date.now()
+      }));
       
       return new Response(null, {
         status: 101,
@@ -228,11 +238,39 @@ export class UserNotesDatabase {
       const data = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message)) as { 
         type: string;
         updateId?: string;
+        clientId?: string;
       };
+      
+      // Check if the message includes a clientId (for reconnection support)
+      if (data.clientId && !this.clientIds.get(ws)) {
+        // This could be a reconnecting client that wasn't properly tracked
+        console.log(`Registering previously unknown client with ID: ${data.clientId}`);
+        this.clientIds.set(ws, data.clientId);
+      }
       
       const clientId = this.clientIds.get(ws);
       if (!clientId) {
-        console.error("Received message from unknown client");
+        console.error("Received message from unknown client, attempting recovery");
+        // Don't immediately fail - try to handle the message anyway
+        // This will allow clients to reestablish their identity
+        if (data.type === 'identify' && data.clientId) {
+          this.clientIds.set(ws, data.clientId);
+          console.log(`Recovered client identity: ${data.clientId}`);
+          
+          // Acknowledge the identity recovery
+          ws.send(JSON.stringify({
+            type: 'identityRecovered',
+            clientId: data.clientId
+          }));
+          
+          return;
+        }
+        
+        // For other message types, request client identification
+        ws.send(JSON.stringify({ 
+          type: 'identifyRequest',
+          message: 'Client identity unknown, please identify'
+        }));
         return;
       }
       
@@ -360,7 +398,7 @@ export class UserNotesDatabase {
   }
 
   // Broadcast updated notes to all connected WebSocket clients
-  private async broadcastUpdate(): Promise<void> {
+  private async broadcastUpdate(operation: 'create' | 'update' | 'delete' = 'update', affectedNoteId: string | null = null): Promise<void> {
     if (this.sessions.size === 0) return;
     
     try {
@@ -384,7 +422,9 @@ export class UserNotesDatabase {
         type: 'update',
         notes,
         updateId,
-        timestamp
+        timestamp,
+        operation,
+        affectedNoteId
       });
       
       // Send to all connected clients
