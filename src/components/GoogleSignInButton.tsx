@@ -4,6 +4,7 @@ import { useAuthContext, GlobalAuth } from '~/lib/AuthProvider';
 import { Show } from 'solid-js';
 import { useRouter } from '@tanstack/solid-router';
 import { Button } from './ui/button';
+import { Icon } from './ui/icon';
 
 interface GoogleSignInButtonProps {
   callbackURL?: string;
@@ -52,12 +53,7 @@ const GoogleSignInButton: Component<GoogleSignInButtonProps> = (props) => {
         <Show when={!isLoading()} fallback={
           <div class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600"></div>
         }>
-          <svg class="h-3 w-3" aria-hidden="true" viewBox="0 0 24 24">
-            <path
-              d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972a6.033 6.033 0 1 1 0-12.064c1.498 0 2.866.549 3.921 1.453l2.814-2.814A9.969 9.969 0 0 0 12.545 2C8.963 2 5.835 3.577 3.739 6.048c-2.995 3.535-2.585 8.875.971 11.927 2.466 2.121 5.856 2.825 9.006 2.001 3.169-.826 5.644-3.231 6.432-6.395.394-1.556.433-3.259.065-4.837H12.545v3.494Z"
-              fill="#4285F4"
-            />
-          </svg>
+          <Icon name="google" />
           <span>Sign in with Google</span>
         </Show>
       </Button>
