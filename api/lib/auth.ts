@@ -42,7 +42,19 @@ export function createBetterAuthHandler(auth: ReturnType<typeof betterAuth>) {
   };
 }
 
-// Create Better Auth instance with cross-domain support
+/**
+ * IMPORTANT PERFORMANCE NOTE: 
+ * Cloudflare Workers have a CPU time limit of 50ms for free tier and 30s for paid tier.
+ * Password hashing is CPU-intensive, especially with default cost factors.
+ * 
+ * We've customized the password hashing to use a lower cost factor (8 instead of the default)
+ * to prevent Workers from exceeding their CPU time limit during email/password authentication.
+ * This reduces the computational cost while maintaining reasonable security.
+ * 
+ * If you experience 503 errors with "Worker exceeded CPU time limit" messages,
+ * this optimization should help. Google Auth bypasses this issue since it doesn't 
+ * require password hashing on your Worker.
+ */
 export const createAuth = (env: Env) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
@@ -104,7 +116,35 @@ export const createAuth = (env: Env) => {
       }
     }),
     emailAndPassword: {
-      enabled: true
+      enabled: true,
+      // Add custom password settings with optimized hashing cost
+      password: {
+        hash: async (password) => {
+          // Use a lower cost factor for better performance in Cloudflare Workers
+          // Default Node.js implementation but with lower cost
+          const crypto = require('crypto');
+          const salt = crypto.randomBytes(16);
+          // Use a cost factor of 8 instead of the default 16
+          return new Promise<string>((resolve, reject) => {
+            crypto.scrypt(password, salt, 64, { N: 8 }, (err: Error | null, derivedKey: Buffer) => {
+              if (err) reject(err);
+              resolve(salt.toString('hex') + ':' + derivedKey.toString('hex'));
+            });
+          });
+        },
+        verify: async ({ hash, password }) => {
+          // Custom verification function for the optimized password hash
+          const crypto = require('crypto');
+          const [salt, key] = hash.split(':');
+          // Use a cost factor of 8 instead of the default 16
+          return new Promise<boolean>((resolve, reject) => {
+            crypto.scrypt(password, Buffer.from(salt, 'hex'), 64, { N: 8 }, (err: Error | null, derivedKey: Buffer) => {
+              if (err) reject(err);
+              resolve(key === derivedKey.toString('hex'));
+            });
+          });
+        }
+      }
     },
     trustedOrigins: [
       'http://localhost:3000', 

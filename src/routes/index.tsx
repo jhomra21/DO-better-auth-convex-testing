@@ -13,7 +13,7 @@ const HomePage: Component = () => {
   const router = useRouter();
 
   return (
-    <div class="p-8 pt-16 min-h-screen flex flex-col bg-gradient-to-br from-stone-50 via-stone-100 to-stone-400/60 text-gray-900">
+    <div class="p-8 min-h-screen flex flex-col bg-gradient-to-br from-stone-50 via-stone-100 to-stone-400/60 text-gray-900">
       <div class="max-w-2xl mx-auto w-full flex flex-col flex-grow">
         <h1 class="text-3xl font-bold mb-6">
           D1 Better Auth, Durable Objects [DB Per User], & Convex Demo
