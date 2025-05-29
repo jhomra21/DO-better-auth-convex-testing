@@ -73,21 +73,88 @@ export class UserNotesDatabase {
       const notes = await this.getNotes();
       const message = JSON.stringify({
         type: 'update',
-        notes
+        notes,
+        timestamp: Date.now()  // Add timestamp to help clients detect out-of-order updates
       });
+      
+      // Track which sessions received the update successfully
+      const failedSessions: WebSocket[] = [];
       
       // Send to all connected clients
       this.sessions.forEach(session => {
         try {
           if (session.readyState === WebSocket.OPEN) {
             session.send(message);
+          } else if (session.readyState === WebSocket.CONNECTING) {
+            // Session is still connecting, mark it for retry
+            failedSessions.push(session);
+          } else {
+            // Session is closing or closed, remove it
+            this.sessions.delete(session);
           }
         } catch (error) {
           console.error("Error sending to WebSocket:", error);
+          failedSessions.push(session);
+        }
+      });
+      
+      // Retry sending to any sessions that failed or were connecting
+      if (failedSessions.length > 0) {
+        // Wait a short time to allow connections to establish
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        for (const session of failedSessions) {
+          try {
+            if (session.readyState === WebSocket.OPEN) {
+              session.send(message);
+            } else if (session.readyState !== WebSocket.CONNECTING) {
+              // Remove any sessions that are no longer valid
+              this.sessions.delete(session);
+            }
+          } catch (error) {
+            console.error("Error in retry sending to WebSocket:", error);
+            // Remove failed session
+            this.sessions.delete(session);
+          }
+        }
+      }
+      
+      // Schedule a delayed rebroadcast to catch any reconnecting clients
+      // This helps with cross-device syncing where connections might be unstable
+      setTimeout(() => {
+        this.rebroadcastToNewSessions(notes);
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Error broadcasting update:", error);
+    }
+  }
+  
+  // Helper to rebroadcast to sessions that might have reconnected
+  private async rebroadcastToNewSessions(notesToBroadcast: any[]): Promise<void> {
+    if (this.sessions.size === 0) return;
+    
+    try {
+      const message = JSON.stringify({
+        type: 'update',
+        notes: notesToBroadcast,
+        timestamp: Date.now(),
+        isRebroadcast: true
+      });
+      
+      // Only send to sessions that are definitely open
+      this.sessions.forEach(session => {
+        try {
+          if (session.readyState === WebSocket.OPEN) {
+            session.send(message);
+          }
+        } catch (error) {
+          console.error("Error in delayed rebroadcast:", error);
+          this.sessions.delete(session);
         }
       });
     } catch (error) {
-      console.error("Error broadcasting update:", error);
+      console.error("Error in rebroadcast:", error);
     }
   }
 
@@ -231,6 +298,13 @@ export class UserNotesDatabase {
           // Respond to client pings to keep connection alive
           ws.send(JSON.stringify({ type: 'pong' }));
           break;
+        case 'refresh':
+          // Client is requesting a refresh of data
+          ws.send(JSON.stringify({
+            type: 'update',
+            notes: await this.getNotes()
+          }));
+          break;
         default:
           ws.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
       }
@@ -243,6 +317,20 @@ export class UserNotesDatabase {
     // Remove the session from our set when it's closed
     this.sessions.delete(ws);
     console.log(`WebSocket closed for user ${this.userId}: ${code} ${reason}`);
+    
+    // If this was an abnormal closure, try to ping all other sessions
+    // to verify they're still alive
+    if (code !== 1000 && code !== 1001) {
+      for (const session of this.sessions) {
+        try {
+          session.send(JSON.stringify({ type: 'healthcheck' }));
+        } catch (e) {
+          // Failed to send, this session is probably dead
+          this.sessions.delete(session);
+          console.log(`Removed dead session for user ${this.userId}`);
+        }
+      }
+    }
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
