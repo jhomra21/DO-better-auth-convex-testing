@@ -29,7 +29,7 @@ This installation of Solid-UI follows the manual instructions but was modified t
 To install the components, run the following command (this install button):
 
 ```bash
-npx solidui-cli@latest add button
+bunx solidui-cli@latest add button
 ```
 
 
@@ -179,53 +179,6 @@ Files prefixed with `demo` can be safely deleted. They are there to provide a st
 
 You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
 
-# Ana Maria Admin
-
-An admin panel for managing Ana Maria's discography.
-
-## Setup
-
-1. Clone this repository
-2. Create a `.env` file in the root directory with the following variables:
-   ```
-   VITE_TURSO_DATABASE_URL=libsql://ana-maria-discography-jhonra121.aws-eu-west-1.turso.io
-   VITE_TURSO_AUTH_TOKEN=your_turso_auth_token
-   ```
-3. Install dependencies:
-   ```
-   bun install
-   ```
-4. Run the development server:
-   ```
-   bun run dev
-   ```
-
-## Database Schema
-
-The application expects the following schema in Turso:
-
-### Albums Table
-```sql
-CREATE TABLE albums (
-  id INTEGER PRIMARY KEY,
-  title TEXT NOT NULL,
-  release_date TEXT NOT NULL,
-  coverart_url TEXT
-);
-```
-
-### Songs Table
-```sql
-CREATE TABLE songs (
-  id INTEGER PRIMARY KEY,
-  title TEXT NOT NULL,
-  duration_seconds INTEGER NOT NULL,
-  track_number INTEGER NOT NULL,
-  is_single INTEGER DEFAULT 0,
-  album_id INTEGER,
-  FOREIGN KEY (album_id) REFERENCES albums (id)
-);
-```
 
 ## Database Setup
 
