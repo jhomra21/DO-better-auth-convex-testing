@@ -4,7 +4,7 @@ const Footer: Component = () => {
   return (
     <footer class="py-3 shadow-md border border-b-stone-300 border-t-stone-100 backdrop-blur-sm p-10
                    rounded-lg mt-auto w-full
-                   bg-gradient-to-b from-stone-100 to-stone-300">
+                   bg-gradient-to-b from-stone-50 to-stone-200">
       <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div class="text-sm text-muted-foreground">
           Built by juan
