@@ -241,7 +241,7 @@ This project demonstrates integration of Better Auth with:
 
 This project uses Better Auth for authentication across different domains:
 
-1. Frontend on Cloudflare Pages (e.g., `convex-testing.pages.dev`)
+1. Frontend on Cloudflare Pages (e.g., `convex-better-auth-testing.pages.dev`)
 2. API on Cloudflare Workers (e.g., `better-auth-d1-worker.workers.dev`)
 
 Since the domains are different, cookies are configured with:
