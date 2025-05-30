@@ -100,7 +100,7 @@ This project uses a **hybrid database strategy**:
 
 ### Prerequisites
 - **Bun** (latest version)
-- **Cloudflare account** with Workers paid plan (for Durable Objects)
+- **Cloudflare account** (for Durable Objects, D1, Workers)
 - **Google OAuth credentials** (optional)
 
 ### Quick Start
