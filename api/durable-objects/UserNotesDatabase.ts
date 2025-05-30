@@ -20,6 +20,15 @@ export class UserNotesDatabase {
   private pendingUpdates: Map<string, { clients: Set<string>, notes: any[], attempts: number, timestamp: number }> = new Map();
   private clientIds: Map<WebSocket, string> = new Map();
   private updateInterval: number | null = null;
+  
+  // Batching for server-side operations
+  private pendingBroadcast: {
+    operation: 'create' | 'update' | 'delete';
+    affectedNoteId: string | null;
+    timestamp: number;
+  } | null = null;
+  private broadcastTimeout: number | null = null;
+  private lastBroadcastTime: number = 0;
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -48,25 +57,25 @@ export class UserNotesDatabase {
 
   async createNote(noteData: Parameters<typeof notes.createNote>[1]): Promise<ReturnType<typeof notes.createNote>> {
     const note = await notes.createNote(this.db, { ...noteData, userId: this.userId });
-    // Broadcast update to all connected clients
-    this.broadcastUpdate('create', note.id);
+    // Use batched broadcast to prevent flooding
+    this.scheduleBatchedBroadcast('create', note.id);
     return note;
   }
 
   async updateNote(noteId: string, updates: Parameters<typeof notes.updateNote>[3]): Promise<ReturnType<typeof notes.updateNote>> {
     const note = await notes.updateNote(this.db, noteId, this.userId, updates);
-    // Broadcast update to all connected clients
+    // Use batched broadcast to prevent flooding
     if (note) {
-      this.broadcastUpdate('update', note.id);
+      this.scheduleBatchedBroadcast('update', note.id);
     }
     return note;
   }
 
   async deleteNote(noteId: string): Promise<ReturnType<typeof notes.deleteNote>> {
     const note = await notes.deleteNote(this.db, noteId, this.userId);
-    // Broadcast update to all connected clients
+    // Use batched broadcast to prevent flooding
     if (note) {
-      this.broadcastUpdate('delete', note.id);
+      this.scheduleBatchedBroadcast('delete', note.id);
     }
     return note;
   }
@@ -395,6 +404,57 @@ export class UserNotesDatabase {
       console.error("Failed to create notes table directly:", e);
       throw e;
     }
+  }
+
+  // Schedule a batched broadcast to prevent message flooding
+  private scheduleBatchedBroadcast(operation: 'create' | 'update' | 'delete', affectedNoteId: string | null = null): void {
+    const now = Date.now();
+    
+    // If we have a pending broadcast, update it with the latest operation
+    this.pendingBroadcast = {
+      operation,
+      affectedNoteId,
+      timestamp: now
+    };
+    
+    // Clear existing timeout
+    if (this.broadcastTimeout !== null) {
+      clearTimeout(this.broadcastTimeout);
+    }
+    
+    // For delete operations, broadcast immediately (critical for UI consistency)
+    if (operation === 'delete') {
+      this.executeBroadcast();
+      return;
+    }
+    
+    // Check if we recently broadcasted (within 200ms)
+    if (now - this.lastBroadcastTime < 200) {
+      // Debounce the broadcast
+      this.broadcastTimeout = setTimeout(() => {
+        this.executeBroadcast();
+      }, 150) as unknown as number;
+    } else {
+      // Execute immediately if no recent broadcast
+      this.executeBroadcast();
+    }
+  }
+  
+  private executeBroadcast(): void {
+    if (!this.pendingBroadcast) return;
+    
+    const { operation, affectedNoteId } = this.pendingBroadcast;
+    this.lastBroadcastTime = Date.now();
+    
+    // Clear pending broadcast and timeout
+    this.pendingBroadcast = null;
+    if (this.broadcastTimeout !== null) {
+      clearTimeout(this.broadcastTimeout);
+      this.broadcastTimeout = null;
+    }
+    
+    // Execute the actual broadcast
+    this.broadcastUpdate(operation, affectedNoteId);
   }
 
   // Broadcast updated notes to all connected WebSocket clients

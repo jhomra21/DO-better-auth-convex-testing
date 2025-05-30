@@ -133,8 +133,14 @@ export default function NotesPage() {
   });
 
   onMount(() => {
-    // Force an immediate refresh on mount
-    void forceRefresh();
+    // Only force refresh if we don't have recent data
+    const shouldForceRefresh = !notesQuery.data || notesQuery.data.length === 0;
+    if (shouldForceRefresh) {
+      console.log("No cached data found, forcing initial refresh");
+      void forceRefresh();
+    } else {
+      console.log("Using cached data, skipping initial force refresh");
+    }
     
     // Subscribe to WebSocket updates
     const unsubscribe = notesAPI.subscribe((notes) => {

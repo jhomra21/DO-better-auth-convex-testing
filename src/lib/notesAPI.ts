@@ -51,6 +51,13 @@ class NotesAPI {
   private _deletedNoteIds: Set<string> | null = null;
   private _editedNoteIds: Set<string> | null = null;
   
+  // Batching and deduplication
+  private _pendingRefresh: Promise<Note[]> | null = null;
+  private _lastRefreshTime: number = 0;
+  private _refreshDebounceTimeout: number | null = null;
+  private _webSocketMessageQueue: any[] = [];
+  private _messageFlushTimeout: number | null = null;
+  
   // Store clientId in localStorage for persistence across page refreshes
   private persistClientId(clientId: string) {
     try {
@@ -184,12 +191,65 @@ class NotesAPI {
     this.setConnectionState(false);
   }
   
+  // Batch WebSocket messages to prevent flooding
+  private queueWebSocketMessage(message: any) {
+    this._webSocketMessageQueue.push(message);
+    
+    // Clear existing timeout
+    if (this._messageFlushTimeout !== null) {
+      window.clearTimeout(this._messageFlushTimeout);
+    }
+    
+    // Process messages in batch after short delay
+    this._messageFlushTimeout = window.setTimeout(() => {
+      this.flushWebSocketMessages();
+    }, 50); // 50ms batch window
+  }
+  
+  private flushWebSocketMessages() {
+    if (this._webSocketMessageQueue.length === 0) return;
+    
+    console.log(`Processing ${this._webSocketMessageQueue.length} batched WebSocket messages`);
+    
+    // Sort messages by timestamp to ensure proper ordering
+    const sortedMessages = this._webSocketMessageQueue.sort((a, b) => {
+      const timestampA = a.timestamp || 0;
+      const timestampB = b.timestamp || 0;
+      return timestampA - timestampB;
+    });
+    
+    // Process each message
+    sortedMessages.forEach(data => {
+      this.processWebSocketMessage(data);
+    });
+    
+    // Clear the queue
+    this._webSocketMessageQueue = [];
+    this._messageFlushTimeout = null;
+  }
+
   // Handle incoming WebSocket messages
   private handleWebSocketMessage(event: MessageEvent) {
     try {
       const data = JSON.parse(event.data);
       
       console.log("WebSocket message received:", data.type);
+      
+      // For real-time critical messages, process immediately
+      if (data.type === 'connected' || data.type === 'identifyRequest' || 
+          data.type === 'pong' || data.type === 'healthcheck') {
+        this.processWebSocketMessage(data);
+      } else {
+        // Batch other messages to prevent flooding
+        this.queueWebSocketMessage(data);
+      }
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  }
+  
+  // Process individual WebSocket messages
+  private processWebSocketMessage(data: any) {
       
       switch (data.type) {
         case 'connected':
@@ -353,29 +413,74 @@ class NotesAPI {
         default:
           break;
       }
-    } catch (error) {
-      console.error('Error parsing WebSocket message:', error);
-    }
   }
   
   // Completely refresh our state from the server bypassing all caches
   private forceCompleteRefresh() {
     console.log("Forcing complete refresh of notes state");
     
+    // Use debounced refresh to prevent rapid-fire requests
+    this.debouncedRefresh();
+  }
+  
+  // Debounced refresh to batch rapid requests
+  private debouncedRefresh() {
+    // Clear existing timeout
+    if (this._refreshDebounceTimeout !== null) {
+      window.clearTimeout(this._refreshDebounceTimeout);
+    }
+    
+    // If we have a pending refresh, return it
+    if (this._pendingRefresh) {
+      console.log("Refresh already pending, reusing existing request");
+      return this._pendingRefresh;
+    }
+    
+    // Check if we refreshed very recently (within 500ms)
+    const now = Date.now();
+    if (now - this._lastRefreshTime < 500) {
+      console.log("Recent refresh detected, debouncing request");
+      this._refreshDebounceTimeout = window.setTimeout(() => {
+        this.executePendingRefresh();
+      }, 300);
+      return;
+    }
+    
+    // Execute immediately if no recent refresh
+    this.executePendingRefresh();
+  }
+  
+  private executePendingRefresh() {
+    // Prevent duplicate requests
+    if (this._pendingRefresh) {
+      return this._pendingRefresh;
+    }
+    
+    console.log("Executing batched refresh request");
+    this._lastRefreshTime = Date.now();
+    
     // First clear any cached data
     this._previousNotes = null;
     
-    // Force a direct fetch from the server API
-    this.getNotes(true)
+    // Create the refresh promise
+    this._pendingRefresh = this.getNotes(true)
       .then(notes => {
-        console.log(`Forced refresh got ${notes.length} notes directly from server`);
+        console.log(`Batched refresh got ${notes.length} notes directly from server`);
         // Manually update our subscribers with the forced fresh data
         this._previousNotes = [...notes];
         this.updateCallbacks.forEach(callback => callback(notes));
+        return notes;
       })
       .catch(error => {
-        console.error("Error during forced refresh:", error);
+        console.error("Error during batched refresh:", error);
+        throw error;
+      })
+      .finally(() => {
+        // Clear the pending refresh
+        this._pendingRefresh = null;
       });
+    
+    return this._pendingRefresh;
   }
   
   // Add a forceRefresh parameter to getNotes
