@@ -164,7 +164,7 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
 ### **Scalability**
 - **Users**: Unlimited (each gets own Durable Object)
 - **Concurrent Connections**: 1000+ per Durable Object
-- **Storage**: Up to 1 GB per user database (via SQLite-backed Durable Objects). 128MB limit for in-memory, not persistent storage; individual key-value entries are 128KiB).
+- **Storage**: Up to 1 GB per user database (via SQLite-backed Durable Objects). 128MB limit for in-memory, not persistent storage; individual key-value entries are 128KiB.
 - **Global Deployment**: 300+ Cloudflare locations
 
 ## 🔍 Key Implementation Details
