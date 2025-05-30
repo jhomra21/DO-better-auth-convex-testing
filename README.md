@@ -1,6 +1,6 @@
 # Durable Objects Real-time Notes: One Database Per User
 
-A cutting-edge demonstration of Cloudflare Durable Objects implementing a **"one database per user"** architecture with real-time capabilities. Each authenticated user gets their own isolated SQLite database instance, showcasing the power of Durable Objects for scalable, globally distributed applications.
+A demonstration of Cloudflare Durable Objects implementing a **"one database per user"** architecture with real-time capabilities. Each authenticated user gets their own isolated SQLite database instance, showcasing the power of Durable Objects for scalable, globally distributed applications.
 
 ## 🌟 Core Features
 
@@ -37,6 +37,12 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
 - **Message Acknowledgments**: Reliable delivery with retry mechanisms
 - **Batch Processing**: Intelligent batching to prevent flooding
 - **Connection State Tracking**: Visual indicators and manual reconnection options
+
+### **Dual Database Architecture**
+This project uses a **hybrid database strategy**:
+
+- **Cloudflare D1** (SQLite): Centralized authentication data (users, sessions, accounts)
+- **Durable Objects** (SQLite): Per-user isolated databases for application data (notes)
 
 ### **Database Per User Benefits**
 1. **Complete Isolation**: No cross-user data access possible
@@ -106,16 +112,25 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
    bun i
    ```
 
-2. **Configure Durable Objects**
+2. **Set up authentication database**
    ```bash
-   # Generate database migrations
+   # Generate Better Auth schema migrations for D1
+   bun run db:generate
+   
+   # Push auth tables to your D1 database  
+   bun run db:push
+   ```
+
+3. **Configure Durable Objects**
+   ```bash
+   # Generate notes database migrations for Durable Objects
    bun run notes:db:generate
    
    # Deploy to Cloudflare
    wrangler deploy
    ```
 
-3. **Start development**
+4. **Start development**
    ```bash
    # Frontend (port 3000)
    bun dev
@@ -124,7 +139,7 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
    bun run api:dev
    ```
 
-4. **Test the system**
+5. **Test the system**
    - Navigate to `/dashboard/notes`
    - Create, edit, and delete notes
    - Open multiple tabs to see real-time sync
@@ -223,6 +238,42 @@ CLOUDFLARE_API_TOKEN=your_api_token
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 ```
+
+## 🔐 Authentication Setup
+
+This project uses **Better Auth** with **Cloudflare D1** for centralized authentication while keeping user data isolated in Durable Objects.
+
+### **Authentication Database (D1)**
+```bash
+# Schema location: src/db/auth-schema.ts
+# Contains tables: user, session, account, verification
+
+# Generate migrations from schema
+bun run db:generate
+
+# Apply to your D1 database
+bun run db:push
+```
+
+### **Required D1 Configuration**
+```jsonc
+// wrangler.jsonc
+{
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "your-auth-db", 
+      "database_id": "your-d1-database-id",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ]
+}
+```
+
+### **Database Architecture**
+- **D1 Database**: Shared auth data (users, sessions, OAuth accounts)
+- **Durable Objects**: Per-user application data (notes, isolated by user ID)
+- **Authentication Flow**: D1 validates session → Extract user ID → Route to user's Durable Object
 
 ---
 
