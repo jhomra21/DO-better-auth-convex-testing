@@ -101,9 +101,9 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
 
 1. **Clone and install**
    ```bash
-   git clone <repository-url>
-   cd convex-better-auth-testing
-   bun install
+   git clone <repository-url> <folder-name>
+   cd <folder-name>
+   bun i
    ```
 
 2. **Configure Durable Objects**
