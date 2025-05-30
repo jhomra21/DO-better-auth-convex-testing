@@ -38,10 +38,11 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
 - **Batch Processing**: Intelligent batching to prevent flooding
 - **Connection State Tracking**: Visual indicators and manual reconnection options
 
-### **Dual Database Architecture**
+### **Hybrid Database Architecture**
 This project uses a **hybrid database strategy**:
 
 - **Cloudflare D1** (SQLite): Centralized authentication data (users, sessions, accounts)
+- **Cloudflare KV**: Sessions storage for fast edge validation
 - **Durable Objects** (SQLite): Per-user isolated databases for application data (notes)
 
 ### **Database Per User Benefits**
