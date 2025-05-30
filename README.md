@@ -41,7 +41,7 @@ getUserNotesDatabaseStub(env: Env, userId: string) {
 ### **Hybrid Database Architecture**
 This project uses a **hybrid database strategy**:
 
-- **Cloudflare D1** (SQLite): Centralized authentication data (users, sessions, accounts)
+- **Cloudflare D1** (SQLite): Centralized authentication data (users, accounts)
 - **Cloudflare KV**: Sessions storage for fast edge validation
 - **Durable Objects** (SQLite): Per-user isolated databases for application data (notes)
 
