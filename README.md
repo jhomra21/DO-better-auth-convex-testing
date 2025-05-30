@@ -16,7 +16,7 @@ A demonstration of Cloudflare Durable Objects implementing a **"one database per
 - **Connection Recovery**: Persistent client identity across page refreshes and network changes
 - **Intelligent Batching**: Prevents message flooding while maintaining responsiveness
 
-### 🏗️ **Enterprise-Grade Architecture**
+### 🏗️ **Modern Architecture**
 - **SolidJS Frontend**: Reactive UI with TanStack Router and Query
 - **Hono.js API**: Lightweight, fast API layer
 - **Better Auth**: Complete authentication with Google OAuth and email/password
