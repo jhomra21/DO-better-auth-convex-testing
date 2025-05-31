@@ -117,6 +117,9 @@ This project uses a **hybrid database strategy**:
    ```bash
    # Generate Better Auth schema migrations for D1
    bun run db:generate
+
+   # Run migrations for dev
+   wrangler d1 migrations apply DB --local
    
    # Push auth tables to your D1 database  
    bun run db:push
