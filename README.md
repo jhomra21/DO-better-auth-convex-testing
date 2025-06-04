@@ -16,7 +16,7 @@ A demonstration of Cloudflare Durable Objects implementing a **"one database per
 - **Connection Recovery**: Persistent client identity across page refreshes and network changes
 - **Intelligent Batching**: Prevents message flooding while maintaining responsiveness
 
-### 🏗️ **Enterprise-Grade Architecture**
+### 🏗️ **Modern Architecture**
 - **SolidJS Frontend**: Reactive UI with TanStack Router and Query
 - **Hono.js API**: Lightweight, fast API layer
 - **Better Auth**: Complete authentication with Google OAuth and email/password
@@ -117,6 +117,9 @@ This project uses a **hybrid database strategy**:
    ```bash
    # Generate Better Auth schema migrations for D1
    bun run db:generate
+
+   # Run migrations for dev
+   wrangler d1 migrations apply DB --local
    
    # Push auth tables to your D1 database  
    bun run db:push
