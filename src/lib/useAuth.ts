@@ -78,25 +78,23 @@ export function useAuth(): UseAuthReturn {
   // The auth flow is ready when the initial fetch/refetch is no longer pending.
   const authReady = createMemo(() => !sessionQuery()?.isPending && !sessionQuery()?.isRefetching);
 
-  const refetchSession = () => queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
-
-  // Login function now uses authClient and refetches session on success.
+  // Login function now uses authClient. The component will handle refetching.
   const login = async (email: string, password: string): Promise<AuthResult> => {
     const { error } = await authClient.signIn.email({ email, password });
     if (error) {
       return { error: { message: error.message || '', code: error.code || undefined } };
     }
-    await refetchSession();
+    // The component is now responsible for invalidating and refetching the session.
     return { error: null };
   };
 
-  // Signup function now uses authClient and refetches session on success.
+  // Signup function now uses authClient. The component will handle refetching.
   const signup = async (email: string, password: string, name: string): Promise<AuthResult> => {
     const { error } = await authClient.signUp.email({ email, password, name });
     if (error) {
       return { error: { message: error.message || '', code: error.code || undefined } };
     }
-    await refetchSession();
+    // The component is now responsible for invalidating and refetching the session.
     return { error: null };
   };
 

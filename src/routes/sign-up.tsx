@@ -9,6 +9,7 @@ import GoogleSignInButton from '~/components/GoogleSignInButton';
 import { Separator } from '~/components/ui/separator';
 import { Icon } from '~/components/ui/icon';
 import { authClient } from '~/lib/authClient';
+import { useQueryClient } from '@tanstack/solid-query';
 
 const sessionQueryOptions = {
   queryKey: ['auth', 'session'],
@@ -23,6 +24,7 @@ function SignUpPage() {
   const [isLoading, setIsLoading] = createSignal(false);
   const auth = useAuthContext();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const handleSignUp = async (e: Event) => {
     e.preventDefault();
@@ -33,7 +35,9 @@ function SignUpPage() {
       if (result.error) {
         setError(result.error.message);
       } else {
-        navigate({ to: '/dashboard' });
+        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+        await queryClient.refetchQueries({ queryKey: ['auth', 'session'] });
+        navigate({ to: '/dashboard', replace: true });
       }
     } finally {
       setIsLoading(false);
