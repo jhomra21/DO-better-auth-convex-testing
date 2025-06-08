@@ -8,23 +8,30 @@ import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import GoogleSignInButton from '~/components/GoogleSignInButton';
 import { Separator } from '~/components/ui/separator';
+import { Icon } from '~/components/ui/icon';
 
 function SignUpPage() {
   const [name, setName] = createSignal('');
   const [email, setEmail] = createSignal('');
   const [password, setPassword] = createSignal('');
   const [error, setError] = createSignal<string | null>(null);
+  const [isLoading, setIsLoading] = createSignal(false);
   const auth = useAuthContext();
   const navigate = useNavigate();
 
   const handleSignUp = async (e: Event) => {
     e.preventDefault();
+    setIsLoading(true);
     setError(null);
-    const result = await auth.signup(email(), password(), name());
-    if (result.error) {
-      setError(result.error.message);
-    } else {
-      navigate({ to: '/dashboard' });
+    try {
+      const result = await auth.signup(email(), password(), name());
+      if (result.error) {
+        setError(result.error.message);
+      } else {
+        navigate({ to: '/dashboard' });
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -70,8 +77,15 @@ function SignUpPage() {
               />
             </div>
             {error() && <p class="text-red-500 text-sm">{error()}</p>}
-            <Button type="submit" class="w-full" disabled={auth.isLoading()}>
-              {auth.isLoading() ? 'Creating Account...' : 'Create Account'}
+            <Button type="submit" class="w-full" variant="sf-compute" disabled={isLoading()}>
+              {isLoading() ? (
+                <>
+                  <Icon name="history" class="mr-2 h-4 w-4 animate-spin" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                'Create Account'
+              )}
             </Button>
           </form>
           <Separator class="my-4" />

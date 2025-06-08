@@ -11,17 +11,13 @@ export function cn(...inputs: ClassValue[]) {
  * @returns {string} The base URL for the API.
  */
 export function getApiUrl(): string {
-  // The auth client requires a full, absolute URL.
-  // In development, we build it dynamically so it points to the Vite proxy.
+  // In development, this should be the URL of the local Cloudflare Worker.
   if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/api/auth`;
-    }
-    // Fallback for non-browser environments during dev.
-    return 'http://localhost:3000/api/auth';
+    // The default wrangler port is 8787.
+    return 'http://127.0.0.1:8787';
   }
   // In production, we use the absolute URL of our deployed backend worker.
-  return 'https://better-auth-api-cross-origin.jhonra121.workers.dev/api/auth';
+  return 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
 }
 
 /**
@@ -44,6 +40,7 @@ export function getFrontendUrl(): string {
  * Returns the auth callback URL based on the current environment
  */
 export function getAuthCallbackUrl(): string {
+  // The callback URL needs the full path to the auth handler.
   return `${getApiUrl()}/api/auth/callback/google`;
 }
 

@@ -155,11 +155,11 @@ export const createAuth = (env: Env) => {
     ],
     advanced: {
       defaultCookieAttributes: {
-        // With the proxy setup, cookies are now first-party.
-        // We can use a stricter SameSite policy for better security.
-        sameSite: "Lax" as const,
-        secure: true
-        // 'partitioned' is no longer needed for first-party cookies.
+        // For cross-site authentication, SameSite=None is required.
+        // This allows the browser to send cookies from the frontend domain to the API domain.
+        sameSite: "None" as const,
+        secure: true, // `secure` is required when sameSite is 'None'
+        partitioned: true // For third-party contexts in modern browsers (CHIPS)
       },
       // Override the handler to properly handle empty JSON bodies
       handler: {
