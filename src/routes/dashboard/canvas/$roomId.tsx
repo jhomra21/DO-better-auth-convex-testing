@@ -5,7 +5,6 @@ import { CanvasComponent } from '~/components/Canvas/CanvasComponent';
 import { useCanvasWebSocket } from '~/hooks/useCanvasWebSocket';
 import { Button } from '~/components/ui/button';
 import RoomSettingsModal, { type ClientCanvasRoom } from '~/components/Canvas/RoomSettingsModal';
-import { fetchWithAuth } from '~/lib/utils/fetchWithAuth';
 import { getApiUrl } from '~/lib/utils';
 
 // Placeholder for the actual canvas drawing component
@@ -41,7 +40,9 @@ interface CanvasEvent {
 // API function to fetch room details
 const getCanvasRoomDetails = async (roomId: string): Promise<ClientCanvasRoom> => {
   if (!roomId) throw new Error("Room ID is required to fetch details.");
-  const response = await fetchWithAuth(`${getApiUrl()}/api/canvas/rooms/${roomId}`);
+  const response = await fetch(`${getApiUrl()}/api/canvas/rooms/${roomId}`, {
+    credentials: 'include',
+  });
   if (!response.ok) {
     let errorDetail: ApiError = { message: `Request failed with status ${response.status}` };
     try {
@@ -148,7 +149,6 @@ function CanvasRoomPage() {
                           Loading room data...
                         </p>}>
           <CanvasComponent 
-            key={roomId()}
             roomId={roomId()}
             events={receivedEvents()}
             onDraw={handleDrawEvent} 
