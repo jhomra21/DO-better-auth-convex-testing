@@ -19,8 +19,6 @@ import { Route as DashboardIndexImport } from './routes/dashboard/index'
 import { Route as DashboardTasksImport } from './routes/dashboard/tasks'
 import { Route as DashboardNotesImport } from './routes/dashboard/notes'
 import { Route as DashboardAccountImport } from './routes/dashboard/account'
-import { Route as DashboardCanvasIndexImport } from './routes/dashboard/canvas/index'
-import { Route as DashboardCanvasRoomIdImport } from './routes/dashboard/canvas/$roomId'
 
 // Create/Update Routes
 
@@ -69,18 +67,6 @@ const DashboardNotesRoute = DashboardNotesImport.update({
 const DashboardAccountRoute = DashboardAccountImport.update({
   id: '/account',
   path: '/account',
-  getParentRoute: () => DashboardRoute,
-} as any)
-
-const DashboardCanvasIndexRoute = DashboardCanvasIndexImport.update({
-  id: '/canvas/',
-  path: '/canvas/',
-  getParentRoute: () => DashboardRoute,
-} as any)
-
-const DashboardCanvasRoomIdRoute = DashboardCanvasRoomIdImport.update({
-  id: '/canvas/$roomId',
-  path: '/canvas/$roomId',
   getParentRoute: () => DashboardRoute,
 } as any)
 
@@ -144,20 +130,6 @@ declare module '@tanstack/solid-router' {
       preLoaderRoute: typeof DashboardIndexImport
       parentRoute: typeof DashboardImport
     }
-    '/dashboard/canvas/$roomId': {
-      id: '/dashboard/canvas/$roomId'
-      path: '/canvas/$roomId'
-      fullPath: '/dashboard/canvas/$roomId'
-      preLoaderRoute: typeof DashboardCanvasRoomIdImport
-      parentRoute: typeof DashboardImport
-    }
-    '/dashboard/canvas/': {
-      id: '/dashboard/canvas/'
-      path: '/canvas'
-      fullPath: '/dashboard/canvas'
-      preLoaderRoute: typeof DashboardCanvasIndexImport
-      parentRoute: typeof DashboardImport
-    }
   }
 }
 
@@ -168,8 +140,6 @@ interface DashboardRouteChildren {
   DashboardNotesRoute: typeof DashboardNotesRoute
   DashboardTasksRoute: typeof DashboardTasksRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
-  DashboardCanvasRoomIdRoute: typeof DashboardCanvasRoomIdRoute
-  DashboardCanvasIndexRoute: typeof DashboardCanvasIndexRoute
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
@@ -177,8 +147,6 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardNotesRoute: DashboardNotesRoute,
   DashboardTasksRoute: DashboardTasksRoute,
   DashboardIndexRoute: DashboardIndexRoute,
-  DashboardCanvasRoomIdRoute: DashboardCanvasRoomIdRoute,
-  DashboardCanvasIndexRoute: DashboardCanvasIndexRoute,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
@@ -194,8 +162,6 @@ export interface FileRoutesByFullPath {
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
   '/dashboard/': typeof DashboardIndexRoute
-  '/dashboard/canvas/$roomId': typeof DashboardCanvasRoomIdRoute
-  '/dashboard/canvas': typeof DashboardCanvasIndexRoute
 }
 
 export interface FileRoutesByTo {
@@ -206,8 +172,6 @@ export interface FileRoutesByTo {
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
   '/dashboard': typeof DashboardIndexRoute
-  '/dashboard/canvas/$roomId': typeof DashboardCanvasRoomIdRoute
-  '/dashboard/canvas': typeof DashboardCanvasIndexRoute
 }
 
 export interface FileRoutesById {
@@ -220,8 +184,6 @@ export interface FileRoutesById {
   '/dashboard/notes': typeof DashboardNotesRoute
   '/dashboard/tasks': typeof DashboardTasksRoute
   '/dashboard/': typeof DashboardIndexRoute
-  '/dashboard/canvas/$roomId': typeof DashboardCanvasRoomIdRoute
-  '/dashboard/canvas/': typeof DashboardCanvasIndexRoute
 }
 
 export interface FileRouteTypes {
@@ -235,8 +197,6 @@ export interface FileRouteTypes {
     | '/dashboard/notes'
     | '/dashboard/tasks'
     | '/dashboard/'
-    | '/dashboard/canvas/$roomId'
-    | '/dashboard/canvas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -246,8 +206,6 @@ export interface FileRouteTypes {
     | '/dashboard/notes'
     | '/dashboard/tasks'
     | '/dashboard'
-    | '/dashboard/canvas/$roomId'
-    | '/dashboard/canvas'
   id:
     | '__root__'
     | '/'
@@ -258,8 +216,6 @@ export interface FileRouteTypes {
     | '/dashboard/notes'
     | '/dashboard/tasks'
     | '/dashboard/'
-    | '/dashboard/canvas/$roomId'
-    | '/dashboard/canvas/'
   fileRoutesById: FileRoutesById
 }
 
@@ -302,9 +258,7 @@ export const routeTree = rootRoute
         "/dashboard/account",
         "/dashboard/notes",
         "/dashboard/tasks",
-        "/dashboard/",
-        "/dashboard/canvas/$roomId",
-        "/dashboard/canvas/"
+        "/dashboard/"
       ]
     },
     "/sign-in": {
@@ -327,14 +281,6 @@ export const routeTree = rootRoute
     },
     "/dashboard/": {
       "filePath": "dashboard/index.tsx",
-      "parent": "/dashboard"
-    },
-    "/dashboard/canvas/$roomId": {
-      "filePath": "dashboard/canvas/$roomId.tsx",
-      "parent": "/dashboard"
-    },
-    "/dashboard/canvas/": {
-      "filePath": "dashboard/canvas/index.tsx",
       "parent": "/dashboard"
     }
   }

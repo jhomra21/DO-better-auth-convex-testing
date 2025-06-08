@@ -1,16 +1,41 @@
-import { createContext, useContext, type JSX, type Component, Show } from 'solid-js';
-import { useAuth, type UseAuthReturn } from '~/lib/useAuth';
+import { createContext, useContext, type JSX, type Component, createEffect, createSignal, Show, onMount, onCleanup } from 'solid-js';
+import { useAuth, type UseAuthReturn } from '~/lib/useAuth'; 
+import { createRoot } from 'solid-js';
 
-// The GlobalAuth object and its attachment to the window are no longer needed
-// as the new useAuth hook provides a more direct and reliable way to manage state.
+// Create a global auth state that can be accessed across the app
+// This is the key to solving the navigation issue
+export const GlobalAuth = createRoot(() => {
+  const [isAuthenticated, setIsAuthenticated] = createSignal(false);
+  const [user, setUser] = createSignal<any>(null);
+  
+  return {
+    isAuthenticated,
+    setIsAuthenticated,
+    user,
+    setUser
+  };
+});
 
-// Define the type for the auth context, which remains the same.
+// Expose GlobalAuth to window for access from other modules without circular dependencies
+if (typeof window !== 'undefined') {
+  (window as any).__GLOBAL_AUTH = GlobalAuth;
+}
+
+// Update type declaration
+declare global {
+  interface Window {
+    __GLOBAL_AUTH: typeof GlobalAuth;
+    __QUERY_CLIENT: any;
+  }
+}
+
+// Define the type for the auth context
 export type AuthContextType = UseAuthReturn;
 
-// Create an auth context.
+// Create an auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Export a hook to use the auth context.
+// Export a hook to use the auth context
 export const useAuthContext = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -19,24 +44,50 @@ export const useAuthContext = () => {
   return context;
 };
 
-// The AuthProvider component props.
+// The AuthProvider component props
 interface AuthProviderProps {
   children: JSX.Element;
 }
 
-// The AuthProvider component is now much simpler.
+// The AuthProvider component
 export const AuthProvider: Component<AuthProviderProps> = (props) => {
-  // The useAuth hook now efficiently manages all state via better-auth's `useSession`.
-  const auth = useAuth();
+  const [initialized, setInitialized] = createSignal(false);  
+  const auth = useAuth(); // This hook will provide all auth state and methods
   
-  // The complex `createEffect` and `onMount` logic for syncing with GlobalAuth
-  // and handling timeouts are no longer necessary. The `authReady` signal
-  // from our new hook is sufficient to know when to render the children.
+  // Combine auth state sync and initialization in a single effect
+  createEffect(() => {
+    // Access these reactive values to create proper dependencies
+    const isAuthReady = auth.authReady();
+    const isAuthenticated = auth.isAuthenticated();
+    const userData = auth.user();
+    
+    // Update global auth state when local auth state changes
+    GlobalAuth.setIsAuthenticated(isAuthenticated);
+    GlobalAuth.setUser(userData);
+    
+    // Set initialized when auth is ready
+    if (isAuthReady) {
+      setInitialized(true);
+    }
+  });
+  
+  // Setup fallback initialization timer with proper cleanup
+  onMount(() => {
+    const timeoutId = setTimeout(() => {
+      if (!initialized()) {
+        console.log('Auth initialization timed out, forcing initialized state');
+        setInitialized(true);
+      }
+    }, 3000);
+    
+    // Clean up timeout when component unmounts
+    onCleanup(() => clearTimeout(timeoutId));
+  });
 
   return (
     <AuthContext.Provider value={auth}>
       <Show 
-        when={auth.authReady()} 
+        when={initialized()} 
         fallback={
           <div class="flex items-center justify-center h-screen">
             <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>

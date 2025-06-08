@@ -8,10 +8,16 @@ import {
   useUpdateNoteMutation,
   useDeleteNoteMutation,
 } from '../../lib/notes-actions';
+import { useAuthGuard } from '~/lib/authGuard';
 import { createFileRoute } from '@tanstack/solid-router';
+import { loadSession, protectedLoader } from '~/lib/protectedRoute';
 import { notesAPI } from '~/lib/notesAPI';
 import type { Note } from '~/lib/notesAPI';
 import styles from './notes.module.css';
+
+// Don't extract just the method - it loses its 'this' binding
+// Instead, create a function that calls the method properly
+const getNotes = () => notesAPI.getNotes();
 
 export default function NotesPage() {
   const [newNoteText, setNewNoteText] = createSignal('');
@@ -420,6 +426,27 @@ export default function NotesPage() {
   );
 }
 
+function ProtectedNotesPage() {
+  useAuthGuard({ requireAuth: true });
+  return <NotesPage />;
+}
+
 export const Route = createFileRoute('/dashboard/notes')({
-  component: NotesPage,
+  component: ProtectedNotesPage,
+  beforeLoad: () => protectedLoader(),
+  loader: async ({ context: { queryClient } }) => {
+    // First load the session (using cached session data)
+    const sessionData = await loadSession();
+    
+    // Then pre-fetch notes data using the function wrapper
+    await queryClient.ensureQueryData({
+      queryKey: ['notes'],
+      queryFn: getNotes,
+    });
+    
+    return {
+      session: sessionData,
+      // Notes will be available via the query cache
+    };
+  },
 }); 

@@ -6,41 +6,42 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Gets the base URL for the API.
- * In development, it points to the local server. In production, it points to the deployed API.
- * @returns {string} The base URL for the API.
+ * Returns the base URL for the API.
+ * In development, it points to the typical Cloudflare Workers/Hono dev server port (e.g., 8787 via wrangler)
+ * In production, it uses the specific worker URL to ensure consistent cross-domain communication.
  */
 export function getApiUrl(): string {
-  // In development, this should be the URL of the local Cloudflare Worker.
   if (import.meta.env.DEV) {
-    // The default wrangler port is 8787.
-    return 'http://127.0.0.1:8787';
+    // For local development, use the local wrangler dev server
+    // Get protocol dynamically to support both http and https
+    const protocol = window.location.protocol;
+    // Use 127.0.0.1 instead of localhost for better compatibility with SameSite cookies
+    return `${protocol}//127.0.0.1:8787`;
+  } else {
+    // In production, use the specific worker URL
+    // This must be the exact worker URL to ensure proper CORS and cookie handling
+    return 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
   }
-  // In production, we use the absolute URL of our deployed backend worker.
-  return 'https://better-auth-api-cross-origin.jhonra121.workers.dev';
 }
 
 /**
  * Returns the frontend URL based on the current environment
  */
 export function getFrontendUrl(): string {
-  // In development, construct the URL dynamically.
   if (import.meta.env.DEV) {
-    if (typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    // Provide a fallback for server-side rendering or other contexts.
-    return 'http://localhost:3000';
+    // For local development
+    const protocol = window.location.protocol;
+    return `${protocol}//localhost:3000`;
+  } else {
+    // In production
+    return 'https://convex-better-auth-testing.pages.dev';
   }
-  // In production, use the canonical URL of your deployed frontend.
-  return 'https://convex-better-auth-testing.pages.dev';
 }
 
 /**
  * Returns the auth callback URL based on the current environment
  */
 export function getAuthCallbackUrl(): string {
-  // The callback URL needs the full path to the auth handler.
   return `${getApiUrl()}/api/auth/callback/google`;
 }
 

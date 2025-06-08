@@ -1,34 +1,44 @@
-import { createMemo } from 'solid-js';
-import { useQueryClient } from '@tanstack/solid-query';
-import { authClient, googleLogin } from './authClient';
-
-// Define types for user and session to match what better-auth/solid provides.
-// This makes our frontend types consistent with the auth library's output.
+import { createSignal, createEffect, createResource, onMount, onCleanup } from 'solid-js';
+import { 
+  enhancedLogin, 
+  enhancedSignup, 
+  enhancedLogout, 
+  getSession, 
+  hasAuthToken,
+  googleLogin,
+  updateGlobalAuthState
+} from './authClient';
+import type { SessionResponse } from './api';
+import { setLastAuthSession } from './protectedRoute'; // Import the new function
+// Define type for user to match Better Auth structure
 export type User = {
   id: string;
   email: string;
   name?: string;
   emailVerified?: boolean;
   image?: string;
-  createdAt?: Date; // Use Date object instead of number
-  updatedAt?: Date; // Add updatedAt with Date object
+  createdAt?: number;
+  // Add any other fields from your Better Auth user object
 };
 
-export type Session = {
-  id: string;
-  userId: string;   // Use camelCase to match library
-  expiresAt: Date;  // Use camelCase and Date object
-  createdAt?: Date; // Use camelCase and Date object
-  updatedAt?: Date; // Use camelCase and Date object
-  token?: string;
-  ipAddress?: string;
-  userAgent?: string;
+// Reuse the session type from SessionResponse in api.ts
+export type Session = SessionResponse['session'] & {
+  // Add any additional properties needed for the frontend
 };
 
+export type AuthState = {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  user: User | null;
+  session: Session | null;
+};
+
+// Define the type for the authentication result
 export type AuthResult = {
-  error: { message: string, code: string | undefined } | null;
+  error: { message: string } | null;
 };
 
+// Define the type for our hook return value
 export interface UseAuthReturn {
   isAuthenticated: () => boolean;
   isLoading: () => boolean;
@@ -36,117 +46,331 @@ export interface UseAuthReturn {
   session: () => Session | null;
   login: (email: string, password: string) => Promise<AuthResult>;
   signup: (email: string, password: string, name: string) => Promise<AuthResult>;
-  logout: () => Promise<AuthResult>;
+  logout: () => Promise<void>;
   loginWithGoogle: (callbackURL?: string) => Promise<AuthResult>;
+  refreshSession: () => Promise<void>;
   authReady: () => boolean;
+  setManualSessionData: (data: { user: User, session: any }) => void;
 }
 
-// This is the new, simplified useAuth hook.
 export function useAuth(): UseAuthReturn {
-  const queryClient = useQueryClient();
-  // `useSession` returns a reactive accessor. Call it to get the query state.
-  // Query options like `refetchOnWindowFocus` are now configured in `authClient.ts`.
-  const sessionQuery = authClient.useSession();
-
-  // Authentication is determined by the presence of session data.
-  const isAuthenticated = createMemo(() => !!sessionQuery()?.data);
-  const isLoading = createMemo(() => sessionQuery()?.isPending);
-  const user = createMemo(() => {
-    const userData = sessionQuery()?.data?.user;
-    if (!userData) return null;
-    // The user object from the server may have date strings, but our app wants Date objects.
-    // We create a new object to avoid mutating the cached query data directly.
-    return {
-      ...userData,
-      createdAt: userData.createdAt ? new Date(userData.createdAt) : undefined,
-      updatedAt: userData.updatedAt ? new Date(userData.updatedAt) : undefined,
-    } as User;
+  // Create signals for auth state
+  const [authState, setAuthState] = createSignal<AuthState>({
+    isAuthenticated: hasAuthToken(), // Initialize based on token presence
+    isLoading: true,
+    user: null,
+    session: null,
   });
 
-  const session = createMemo(() => {
-    const sessionData = sessionQuery()?.data?.session;
-    if (!sessionData) return null;
-    // The session object also has date strings that need to be converted.
-    return {
-      ...sessionData,
-      expiresAt: new Date(sessionData.expiresAt),
-      createdAt: sessionData.createdAt ? new Date(sessionData.createdAt) : undefined,
-      updatedAt: sessionData.updatedAt ? new Date(sessionData.updatedAt) : undefined,
-    } as Session;
-  });
-  
-  // The auth flow is ready when the initial fetch/refetch is no longer pending.
-  const authReady = createMemo(() => !sessionQuery()?.isPending && !sessionQuery()?.isRefetching);
+  // Track if auth is ready (initialization complete)
+  const [authReady, setAuthReady] = createSignal(false);
 
-  // Login function now uses authClient and manually updates the session query on success.
+  // Create a signal to track the token
+  const [currentToken, setCurrentToken] = createSignal(localStorage.getItem('bearer_token') || '');
+
+  // Create a resource that fetches the session
+  const [sessionData, { refetch: refetchSession }] = createResource(async () => {
+    try {
+      // Fetch the session using our custom function
+      const result = await getSession();
+      
+      if (result && result.authenticated) {
+        // Use the session data directly from the API response
+        const normalizedSession: Session = {
+          id: result.session?.id || '',
+          user_id: result.session?.user_id || '',
+          expires_at: result.session?.expires_at || 0,
+          token: result.session?.token || '',
+          created_at: result.session?.created_at,
+          updated_at: result.session?.updated_at,
+          ip_address: result.session?.ip_address,
+          user_agent: result.session?.user_agent
+        };
+        
+        setAuthState({
+          isAuthenticated: true,
+          isLoading: false,
+          user: result.user || null,
+          session: normalizedSession,
+        });
+        return result;
+      } else {
+        setAuthState({
+          isAuthenticated: false,
+          isLoading: false,
+          user: null,
+          session: null,
+        });
+        return null;
+      }
+    } catch (error) {
+      console.error("Session fetch error:", error);
+      setAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        session: null,
+      });
+      return null;
+    } finally {
+      setAuthReady(true);
+    }
+  });
+
+  // Combined effect for session data and token tracking
+  createEffect(() => {
+    // 1. Update loading state based on session data
+    const data = sessionData();
+    if (data !== undefined) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+    }
+
+    // 2. Track token changes and refresh session when needed
+    const token = localStorage.getItem('bearer_token') || '';
+    if (token !== currentToken()) {
+      setCurrentToken(token);
+      refetchSession();
+    }
+  });
+
+  // Initialize auth and set up event listeners
+  onMount(() => {
+    // Check URL for token and refresh session if needed
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('token')) {
+      // Force immediate session refresh if token is present in URL
+      refetchSession();
+    }
+    
+    // Set a timeout to ensure initialization completes even if there are issues
+    const timeoutId = setTimeout(() => {
+      if (!authReady()) {
+        setAuthReady(true);
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+      }
+    }, 2000);
+
+    // Set up a listener for storage events (for multi-tab support)
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'bearer_token') {
+        const token = localStorage.getItem('bearer_token') || '';
+        setCurrentToken(token);
+        refetchSession();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Clean up
+    onCleanup(() => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('storage', handleStorageChange);
+    });
+  });
+
+  // Login function
   const login = async (email: string, password: string): Promise<AuthResult> => {
-    const result = await authClient.signIn.email({ email, password });
-    if (result.error) {
-        return { error: { message: result.error.message || '', code: result.error.code || undefined } };
-    }
+    setAuthState(prev => ({ ...prev, isLoading: true }));
     
-    // Manually update the session query cache with the data returned from the login.
-    // This avoids a race condition by not requiring an immediate refetch.
-    if (result.data) {
-        queryClient.setQueryData(['auth', 'session'], result.data);
-    } else {
-        // As a fallback, if login doesn't return data, invalidate to trigger a refetch.
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+    try {
+      const result = await enhancedLogin(email, password);
+      
+      if (!result.error) {
+        // Check if the result includes user and session data
+        if (result.user && result.session && result.authenticated) {
+          // Update auth state directly with the returned data
+          setAuthState({
+            isAuthenticated: true,
+            isLoading: false,
+            user: result.user,
+            session: result.session
+          });
+          
+          // Update global auth state via the utility function
+          updateGlobalAuthState(true, result.user);
+          
+          // Store session for route protection
+          setLastAuthSession({
+            session: result.session,
+            user: result.user,
+            authenticated: true
+          });
+          
+          // Update query cache directly instead of refetching
+          window.__QUERY_CLIENT?.setQueryData(['auth', 'session'], {
+            authenticated: true,
+            user: result.user,
+            session: result.session
+          });
+        } else {
+          // Fallback to previous behavior if session data not included
+          window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+          await refreshSession();
+        }
+        
+        return { error: null };
+      } else {
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+        return result;
+      }
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      return { 
+        error: { 
+          message: error instanceof Error ? error.message : "Unknown error during login" 
+        } 
+      };
     }
-    
-    return { error: null };
   };
 
-  // Signup function now uses authClient and manually updates the session query on success.
+  // Signup function
   const signup = async (email: string, password: string, name: string): Promise<AuthResult> => {
-    const result = await authClient.signUp.email({ email, password, name });
-    if (result.error) {
-        return { error: { message: result.error.message || '', code: result.error.code || undefined } };
+    setAuthState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      const result = await enhancedSignup(email, password, name);
+      
+      if (!result.error) {
+        // Check if the result includes user and session data
+        if (result.user && result.session && result.authenticated) {
+          // Update auth state directly with the returned data
+          setAuthState({
+            isAuthenticated: true,
+            isLoading: false,
+            user: result.user,
+            session: result.session
+          });
+          
+          // Update global auth state via the utility function
+          updateGlobalAuthState(true, result.user);
+          
+          // Store session for route protection
+          setLastAuthSession({
+            session: result.session,
+            user: result.user,
+            authenticated: true
+          });
+          
+          // Update query cache directly instead of refetching
+          window.__QUERY_CLIENT?.setQueryData(['auth', 'session'], {
+            authenticated: true,
+            user: result.user,
+            session: result.session
+          });
+        } else {
+          // Fallback to previous behavior if session data not included
+          window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+          await refreshSession();
+        }
+        
+        return { error: null };
+      } else {
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+        return result;
+      }
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      return { 
+        error: { 
+          message: error instanceof Error ? error.message : "Unknown error during signup" 
+        }
+      };
     }
-
-    // Manually update the session query cache with the data returned from signup.
-    if (result.data) {
-        queryClient.setQueryData(['auth', 'session'], result.data);
-    } else {
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
-    }
-
-    return { error: null };
   };
 
-  // Logout function now uses authClient and refetches session.
-  const logout = async (): Promise<AuthResult> => {
-    const { error } = await authClient.signOut();
-    if (error) {
-      return { error: { message: error.message || '', code: error.code || undefined } };
+  // Logout function
+  const logout = async (): Promise<void> => {
+    setAuthState(prev => ({ ...prev, isLoading: true }));
+    try {
+      await enhancedLogout();
+      
+      // Clear the session cache
+      window.__QUERY_CLIENT?.removeQueries({ queryKey: ['auth', 'session'] });
+      
+      // Update global auth state
+      updateGlobalAuthState(false, null);
+      
+      setAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        session: null,
+      });
+      
+      setAuthReady(true);
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Still update state even if there was an error
+      setAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        session: null,
+      });
     }
-    // Instead of just invalidating, we reset the query.
-    // This immediately removes the session data from the cache,
-    // ensuring that any subsequent renders see an unauthenticated state
-    // before the navigation away from the protected route begins.
-    await queryClient.resetQueries({ queryKey: ['auth', 'session'] });
-    return { error: null };
   };
 
-  // Google login function now uses the helper from authClient.
+  // Google login function
   const loginWithGoogle = async (callbackURL?: string): Promise<AuthResult> => {
-    const { error } = await googleLogin(callbackURL);
-    if (error) {
-        return { error: { message: error.message || '', code: error.code || undefined } };
+    setAuthState(prev => ({ ...prev, isLoading: true }));
+    
+    try {
+      // Note: We can't immediately get session data after Google login
+      // as it involves a redirect flow, but we can optimize the return handling
+      const result = await googleLogin(callbackURL);
+      
+      if (!result.error) {
+        // Google auth is special because it redirects to the provider
+        // Just set loading to false, the actual session will be checked
+        // when the user returns from the OAuth provider
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+        
+        // No need to update cache or invalidate queries here - it will be
+        // handled by initAuth and handleTokenFromUrl after redirect
+        return { error: null };
+      } else {
+        setAuthState(prev => ({ ...prev, isLoading: false }));
+        return result;
+      }
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      return { 
+        error: { 
+          message: error instanceof Error ? error.message : "Unknown error during Google login" 
+        } 
+      };
     }
-    // No need to refetch here, the page will reload after OAuth redirect.
-    return { error: null };
   };
-  
+
+  // Function to refresh the session
+  const refreshSession = async (): Promise<void> => {
+    // Invalidate the session cache to force a fresh fetch
+    window.__QUERY_CLIENT?.invalidateQueries({ queryKey: ['auth', 'session'] });
+    await refetchSession();
+  };
+
+  // Function to manually set session data (useful for immediate UI updates)
+  const setManualSessionData = (data: { user: User, session: any }) => {
+    setAuthState({
+      isAuthenticated: true,
+      isLoading: false,
+      user: data.user,
+      session: data.session,
+    });
+  };
+
+  // Return the auth state and functions
   return {
-    isAuthenticated,
-    isLoading,
-    user,
-    session,
+    isAuthenticated: () => authState().isAuthenticated,
+    isLoading: () => authState().isLoading,
+    user: () => authState().user,
+    session: () => authState().session,
     login,
     signup,
     logout,
     loginWithGoogle,
+    refreshSession,
     authReady,
+    setManualSessionData,
   };
 } 

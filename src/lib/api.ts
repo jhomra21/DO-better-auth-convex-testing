@@ -1,35 +1,38 @@
 import { getApiUrl } from './utils';
 
-// Helper function to create authenticated fetch requests.
-// It ensures that credentials (like cookies) are sent with each request.
+// Helper function to create authenticated fetch requests
 export function createAuthenticatedFetch() {
   return (input: RequestInfo | URL, init?: RequestInit) => {
-    // The browser automatically sends HttpOnly cookies on cross-origin requests
-    // when 'credentials: include' is used. We do not need to manually handle tokens.
+    // Get the auth token from localStorage
+    const token = localStorage.getItem('bearer_token');
     
-    // Return the fetch call with credentials included.
+    // Prepare headers with Authorization if token exists
+    const headers = new Headers(init?.headers);
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    
+    // Return the fetch with credentials included
     return fetch(input, { 
       ...init, 
-      credentials: 'include' // Required for sending cookies cross-origin.
+      headers,
+      credentials: 'include' // Required for sending cookies cross-origin
     });
   };
 }
 
-// Create an authenticated fetch instance to be used across the app.
+// Create an authenticated fetch instance
 export const authFetch = createAuthenticatedFetch();
 
-// Helper function to get the current session from the backend.
+// Helper function to get the current session
 export async function getSession(): Promise<SessionResponse> {
   try {
     const response = await authFetch(`${getApiUrl()}/session`);
     if (response.ok) {
-      // The backend returns session data if the user is authenticated.
       return await response.json();
     }
-    // If the response is not OK (e.g., 401), the user is not authenticated.
     return { authenticated: false };
   } catch (error) {
-    // This catches network errors etc.
     console.error('Error fetching session:', error);
     return { authenticated: false };
   }

@@ -42,8 +42,8 @@ export const NavUser: Component = () => {
     if (isMobile()) {
       setOpenMobile(false);
     }
-    await auth.logout();
-    navigate({ to: "/", replace: true });
+    await auth.logout()
+    navigate({ to: "/" })
   }
 
   return (
@@ -55,10 +55,6 @@ export const NavUser: Component = () => {
         }}
       >
         <Show 
-          when={auth.authReady()} 
-          fallback={<div class="h-10 w-full" />}
-        >
-          <Show 
           when={auth.isAuthenticated() && user()} 
           fallback={
             <SidebarMenuButton
@@ -161,7 +157,6 @@ export const NavUser: Component = () => {
               </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-          </Show>
         </Show>
       </SidebarMenuItem>
     </SidebarMenu>

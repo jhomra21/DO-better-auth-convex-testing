@@ -103,13 +103,7 @@ export const createAuth = (env: Env) => {
     session: {
       expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
       updateAge: 60 * 60 * 24, // Update session every 24 hours
-      strategy: "database", // Use stateful database sessions for better cross-domain reliability
-      // Enable cookie caching for better performance.
-      // This reduces database lookups by storing session data in a short-lived, signed cookie.
-      cookieCache: {
-        enabled: true,
-        maxAge: 60 * 5 // 5 minutes in seconds
-      }
+      strategy: "jwt", // Use JWT tokens for sessions
     },
     // Use drizzleAdapter with the initialized db instance
     database: drizzleAdapter(db, {
@@ -161,11 +155,27 @@ export const createAuth = (env: Env) => {
     ],
     advanced: {
       defaultCookieAttributes: {
-        // For cross-site authentication, SameSite=None is required.
-        // This allows the browser to send cookies from the frontend domain to the API domain.
-        sameSite: "None" as const,
-        secure: true, // `secure` is required when sameSite is 'None'
-        partitioned: true // For third-party contexts in modern browsers (CHIPS)
+        // Configure cookies for cross-domain use
+        sameSite: "none" as const,
+        secure: true,
+        partitioned: true // For browser compatibility with new standards
+      },
+      // Add any additional configuration as needed
+      cookies: {
+        sessionToken: {
+          attributes: {
+            sameSite: "none" as const,
+            secure: true,
+            partitioned: true
+          }
+        },
+        csrfToken: {
+          attributes: {
+            sameSite: "none" as const,
+            secure: true,
+            partitioned: true
+          }
+        }
       },
       // Override the handler to properly handle empty JSON bodies
       handler: {

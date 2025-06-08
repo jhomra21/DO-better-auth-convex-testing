@@ -10,10 +10,12 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push:sqlite",
-    "db:studio": "drizzle-kit studio --verbose"
+    "notes:db:generate": "drizzle-kit generate --config api/drizzle.config.ts",
+    "api:dev": "wrangler dev api/index.ts",
+    "auth:migrate": "bunx @better-auth/cli generate",
+    "deploy": "bun run notes:db:generate && wrangler deploy"
   },
   "dependencies": {
-    "@better-auth/client": "^0.0.2-alpha.3",
     "@kobalte/core": "^0.13.9",
     "@libsql/client": "^0.15.7",
     "@tailwindcss/vite": "^4.1.7",
