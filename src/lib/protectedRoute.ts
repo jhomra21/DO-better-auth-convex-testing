@@ -18,11 +18,10 @@ type SessionData = {
   }
 };
 
+// Define the query options that can be used by both the loader and other parts of the app
 const sessionQueryOptions = {
-  queryKey: ["auth", "session"],
-  // We don't want to retry on failure for auth checks, as it can cause loops
-  // or unwanted redirects. If it fails, it fails.
-  retry: 0,
+  queryKey: ['auth', 'session'],
+  // The query function is what `fetchQuery` will execute.
   queryFn: () => authClient.getSession(),
 };
 
@@ -36,20 +35,33 @@ const sessionQueryOptions = {
  * loader: protectedRouteLoader
  */
 export const protectedRouteLoader: RouteLoaderFn = async ({ context, location }) => {
-  const { queryClient } = context as RouterContext;
+  const { queryClient } = context as { queryClient: QueryClient };
 
   try {
-    const session = await queryClient.ensureQueryData(sessionQueryOptions);
-    if (!session?.data?.user) {
-      throw new Error("User not authenticated");
+    // `fetchQuery` will now use the fully-defined query options.
+    // This provides the necessary type information and the function to execute.
+    const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+    
+    const isAuthenticated = !!sessionData?.data?.user;
+
+    if (!isAuthenticated) {
+      console.error('Authentication check failed, redirecting to sign-in. Error: User not authenticated');
+      throw redirect({
+        to: '/sign-in',
+        search: {
+          redirect: location.href,
+        },
+      });
     }
-    return session.data;
+
+    // Return the user/session data on success
+    return sessionData.data;
   } catch (error) {
-    console.error("Authentication check failed, redirecting to sign-in.", error);
+    console.error('Error during authentication check in loader, redirecting.', error);
     throw redirect({
-      to: "/sign-in",
+      to: '/sign-in',
       search: {
-        redirect: location.pathname + location.search,
+        redirect: location.href,
       },
     });
   }
@@ -64,21 +76,22 @@ export const protectedRouteLoader: RouteLoaderFn = async ({ context, location })
  * loader: publicOnlyLoader
  */
 export const publicOnlyLoader: RouteLoaderFn = async ({ context }) => {
-  const { queryClient } = context as RouterContext;
+  const { queryClient } = context as { queryClient: QueryClient };
 
+  // For public routes, we can also ensure the session is loaded,
+  // then redirect if the user IS authenticated.
   try {
-    // Use fetchQuery to check for a session without triggering loading indicators.
-    // It checks the cache first, then fetches if stale.
-    const session = await queryClient.fetchQuery(sessionQueryOptions);
-    if (session?.data?.user) {
+    const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+    if (sessionData?.data?.user) {
+      // User is logged in, redirect to dashboard
       throw redirect({
-        to: "/dashboard",
+        to: '/dashboard',
       });
     }
-  } catch (error) {
-    // Error indicates no active session, which is expected on public routes.
-    // We can safely ignore it and allow rendering the route.
+  } catch {
+    // Error fetching session can be ignored here, it means user is not logged in.
   }
-
-  return {};
+  
+  // Return null because no data is needed for public routes
+  return null;
 }; 
