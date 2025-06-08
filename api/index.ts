@@ -39,25 +39,35 @@ const app = new Hono<{ Bindings: Env, Variables: HonoVariables }>()
 // CORS Configuration with enhanced header handling
 app.use('*', cors({
   origin: (origin) => {
+    // Define the allowed origins
     const allowedOrigins = [
-        'http://localhost:3000', 
-        'http://localhost:4173', 
-        'http://localhost:5173', 
-        'http://127.0.0.1:5173',
-        'http://127.0.0.1:3000',
-        'https://convex-better-auth-testing.pages.dev',
-        'https://better-auth-api-cross-origin.jhonra121.workers.dev'
+      'http://localhost:3000',
+      'http://localhost:4173',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      'https://convex-better-auth-testing.pages.dev',
     ];
-    if (!origin || allowedOrigins.includes(origin)) {
-        return origin || '*';
+
+    // Allow requests from the defined origins
+    if (allowedOrigins.includes(origin)) {
+      return origin;
     }
-    return null; 
+    
+    // For local development, you might also want to handle cases where the origin is not set
+    // This is not recommended for production but can be useful for debugging.
+    if (!origin && process.env.NODE_ENV === 'development') {
+      return '*';
+    }
+
+    // Block all other origins
+    return null;
   },
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma', 'set-auth-token', 'Set-Auth-Token'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma', 'Set-Cookie'],
   allowMethods: ['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE', 'HEAD', 'PATCH'],
-  exposeHeaders: ['Content-Length', 'Set-Cookie', 'set-auth-token', 'Set-Auth-Token'], 
+  exposeHeaders: ['Content-Length', 'Set-Cookie'],
   maxAge: 86400,
-  credentials: true, 
+  credentials: true,
 }));
 
 // This middleware is modeled directly on the Better Auth documentation.
@@ -100,63 +110,19 @@ app.get('/', (c: Context<{ Bindings: Env }>) => {
 app.get('/session', async (c) => {
   const user = c.get('user');
   const session = c.get('session');
-  
-  // Debug logging
-  
-  
-  // Check if we have a user from context (cookie-based auth)
+
+  // The global middleware populates 'user' and 'session' if the cookie is valid.
   if (user) {
     return c.json({
       authenticated: true,
       user,
-      session
+      session,
     });
   }
-  
-  // If no user in context, try to get it from the Authorization header
-  const authHeader = c.req.header('Authorization');
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    
-    try {
-      // Find session by token
-      const sessionResult = await c.env.DB.prepare(
-        "SELECT * FROM session WHERE token = ?"
-      ).bind(token).first();
-      
-      if (!sessionResult) {
-        return c.json({
-          authenticated: false,
-          message: 'Invalid token'
-        });
-      }
-      
-      // Get user from session
-      const userResult = await c.env.DB.prepare(
-          "SELECT * FROM user WHERE id = ?"
-      ).bind(sessionResult.user_id).first();
-        
-      if (!userResult) {
-        return c.json({
-          authenticated: false,
-          message: 'User not found'
-        });
-      }
-      
-      return c.json({
-        authenticated: true,
-        user: userResult,
-        session: sessionResult
-      });
-    } catch (error) {
-      console.error('Error getting session by token:', error);
-    }
-  }
-  
-  // No valid authentication
+
+  // If no user is found in the context, they are not authenticated.
   return c.json({
-    authenticated: false
+    authenticated: false,
   });
 });
 

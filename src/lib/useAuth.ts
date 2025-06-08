@@ -45,6 +45,7 @@ export interface UseAuthReturn {
 export function useAuth(): UseAuthReturn {
   const queryClient = useQueryClient();
   // `useSession` returns a reactive accessor. Call it to get the query state.
+  // Query options like `refetchOnWindowFocus` are now configured in `authClient.ts`.
   const sessionQuery = authClient.useSession();
 
   // Authentication is determined by the presence of session data.
@@ -81,20 +82,11 @@ export function useAuth(): UseAuthReturn {
 
   // Login function now uses authClient and refetches session on success.
   const login = async (email: string, password: string): Promise<AuthResult> => {
-    const { data, error } = await authClient.signIn.email({ email, password });
+    const { error } = await authClient.signIn.email({ email, password });
     if (error) {
       return { error: { message: error.message || '', code: error.code || undefined } };
     }
-    
-    // Manually update the query cache with the session data returned from login.
-    // This avoids the race condition of refetching before the cookie is set.
-    if (data) {
-      queryClient.setQueryData(['auth', 'session'], { data });
-    } else {
-      // As a fallback, if login doesn't return data for some reason, refetch.
-      await refetchSession();
-    }
-
+    await refetchSession();
     return { error: null };
   };
 

@@ -21,6 +21,11 @@ export const authClient = createAuthClient({
     // We still need `credentials: 'include'` for the browser to send cookies
     // to the cross-domain API. Better Auth will handle the session automatically.
     credentials: 'include',
+  },
+  queryOptions: {
+    // This is the correct place to configure TanStack Query options for the auth client.
+    // We enable refetchOnWindowFocus to ensure session data is always fresh.
+    refetchOnWindowFocus: true,
   }
 });
 
