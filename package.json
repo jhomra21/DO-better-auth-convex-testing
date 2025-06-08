@@ -13,7 +13,7 @@
     "db:studio": "drizzle-kit studio --verbose"
   },
   "dependencies": {
-    "@better-auth/client": "^1.0.0-beta.23",
+    "@better-auth/client": "^0.0.2-alpha.3",
     "@kobalte/core": "^0.13.9",
     "@libsql/client": "^0.15.7",
     "@tailwindcss/vite": "^4.1.7",
