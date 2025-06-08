@@ -1,13 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/solid-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
-import { createSignal, createEffect, createMemo, Show, For, onCleanup, type Accessor } from 'solid-js';
-import { 
-  fetchProfile, 
-  updateProfile, 
-  fetchSessions, 
-  revokeSession,
-  formatDate,
-} from '~/lib/databaseService';
+import { createSignal, createMemo, Show } from 'solid-js';
 import { useAuthContext } from '~/lib/AuthProvider';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '~/components/ui/card';
@@ -20,123 +12,18 @@ const sessionQueryOptions = {
   queryFn: () => authClient.getSession(),
 } as const;
 
-// Define types for loader data
-type LoaderData = {
-  session: {
-    user: {
-      id: string;
-      name: string;
-      email: string;
-      // add other user properties
-    };
-    // add other session properties
-  };
-  initialProfileData: Awaited<ReturnType<typeof fetchProfile>>;
-  initialSessionsData: Awaited<ReturnType<typeof fetchSessions>>;
-};
-
-// Define cache times (in milliseconds)
-const FIVE_MINUTES = 5 * 60 * 1000;
-const ONE_HOUR = 60 * 60 * 1000;
-
 // Account management component
 function AccountPage() {
-  const queryClient = useQueryClient();
-  const loaderData = Route.useLoaderData() as Accessor<LoaderData>;
-  const user = () => loaderData()?.session.user;
-  const auth = useAuthContext();
+  const { user } = useAuthContext();
   
-  // Profile editing
+  // Profile editing state (functionality is temporarily removed)
   const [editMode, setEditMode] = createSignal(false);
-  const [name, setName] = createSignal(user()?.name || '');
-  const [imageUrl, setImageUrl] = createSignal('');
   
-  // Fetch profile data
-  const profileQuery = useQuery(() => ({
-    queryKey: ['profile'],
-    queryFn: fetchProfile,
-    retry: 1,
-    initialData: loaderData()?.initialProfileData,
-    staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
-    gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
-  }));
-  
-  // Fetch sessions data
-  const sessionsQuery = useQuery(() => ({
-    queryKey: ['sessions'],
-    queryFn: fetchSessions,
-    retry: 1,
-    initialData: loaderData()?.initialSessionsData,
-    staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
-    gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
-  }));
-  
-  // Create memoized values for profile data to improve reactivity
-  const profileData = createMemo(() => profileQuery.data?.profile);
-  // Create memoized value for sessions data
-  const sessionsData = createMemo(() => sessionsQuery.data?.sessions || []);
-  // Create memoized value for sessions loading state
-  const isLoadingSessions = createMemo(() => sessionsQuery.isLoading);
-  // Create memoized value for sessions error state
-  const hasSessionsError = createMemo(() => sessionsQuery.isError);
-  // Create memoized value for profile loading state
-  const isLoadingProfile = createMemo(() => profileQuery.isLoading);
-  // Create memoized value for profile error state
-  const hasProfileError = createMemo(() => profileQuery.isError);
-
-  // Update profile mutation
-  const updateProfileMutation = useMutation(() => ({
-    mutationFn: updateProfile,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
-      setEditMode(false);
-    },
-  }));
- 
-  // Create memoized value for update mutation state
-  const isUpdatingProfile = createMemo(() => updateProfileMutation.isPending);
-
-  // Revoke session mutation
-  const revokeSessionMutation = useMutation(() => ({
-    mutationFn: revokeSession,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessions'] });
-    },
-  }));
-  
-  // Initialize form when entering edit mode
-  createEffect(() => {
-    // Access reactive dependencies explicitly to ensure proper reactivity
-    const isEditMode = editMode();
-    const profile = profileData();
-    
-    if (isEditMode && profile) {
-      setName(profile.name || '');
-      setImageUrl(profile.image || '');
-    }
-  })
-  onCleanup(() => {
-    setEditMode(false);
-  });
-  
-  // Handle profile form submission
-  const handleProfileSubmit = (e: Event) => {
-    e.preventDefault();
-    
-    // Use function form to capture current values
-    const profileUpdate = {
-      name: name(),
-      image: imageUrl()
-    };
-    
-    updateProfileMutation.mutate(profileUpdate);
-  };
-  
-  // Handle session revocation
-  const handleRevokeSession = (sessionId: string) => {
-    if (confirm('Are you sure you want to revoke this session?')) {
-      revokeSessionMutation.mutate(sessionId);
-    }
+  const handleEditToggle = () => {
+    // For now, this is a placeholder. In the future, this would enable a form.
+    setEditMode(!editMode());
+    // In a real implementation, you might fetch editable profile data here
+    // or switch inputs to be non-disabled.
   };
   
   return (
@@ -144,35 +31,29 @@ function AccountPage() {
       <Card>
         <CardHeader>
           <CardTitle>Account Information</CardTitle>
-          <CardDescription>Manage your account settings.</CardDescription>
+          <CardDescription>
+            View your account details. Profile editing is temporarily disabled.
+          </CardDescription>
         </CardHeader>
         <CardContent class="space-y-6">
           <div class="space-y-2">
             <Label>Email</Label>
             <Input value={user()?.email || 'N/A'} disabled />
           </div>
-          <form onSubmit={handleProfileSubmit} class="space-y-4">
-            <div class="space-y-2">
+          <div class="space-y-2">
               <Label for="name">Name</Label>
               <div class="flex items-center gap-2">
                 <Input
                   id="name"
-                  value={name()}
-                  onChange={setName}
+                  value={user()?.name || 'N/A'}
                   disabled={!editMode()}
                 />
-                <Button type="button" variant="outline" onClick={() => setEditMode(false)}>
+                <Button type="button" variant="outline" onClick={handleEditToggle}>
                   {editMode() ? 'Cancel' : 'Edit'}
                 </Button>
               </div>
             </div>
-            {editMode() && (
-              <Button type="submit" disabled={isUpdatingProfile()}>
-                {isUpdatingProfile() ? 'Saving...' : 'Save Changes'}
-              </Button>
-            )}
-          </form>
-          {hasProfileError() && <p class="text-red-500 text-sm">{hasProfileError()}</p>}
+          {/* Session management UI is removed for now as it's not supported by the current auth setup */}
         </CardContent>
       </Card>
     </div>
@@ -185,7 +66,7 @@ export const Route = createFileRoute('/dashboard/account')({
     const { queryClient } = context;
 
     try {
-      const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+      const sessionData = await queryClient.ensureQueryData(sessionQueryOptions);
       
       const isAuthenticated = !!sessionData?.data?.user;
   
@@ -198,17 +79,10 @@ export const Route = createFileRoute('/dashboard/account')({
         });
       }
   
-      // Pre-fetch profile and sessions in the loader.
-      const initialProfileData = await queryClient.fetchQuery({ queryKey: ['profile'], queryFn: fetchProfile });
-      const initialSessionsData = await queryClient.fetchQuery({ queryKey: ['sessions'], queryFn: fetchSessions });
-
-      return {
-        session: sessionData.data,
-        initialProfileData,
-        initialSessionsData
-      };
-
+      // No need to return loader data as the component now uses the auth context
+      return null;
     } catch (error) {
+      // Handle redirect errors or other exceptions
       if (error instanceof Response && error.headers.get('Location')) {
         throw error; // Re-throw the redirect response
       }

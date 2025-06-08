@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createSignal, createEffect } from 'solid-js';
 import { Link, createFileRoute, useNavigate, redirect } from '@tanstack/solid-router';
 import { useAuthContext } from '../lib/AuthProvider';
 import { Button } from '~/components/ui/button';
@@ -9,12 +9,12 @@ import GoogleSignInButton from '~/components/GoogleSignInButton';
 import { Separator } from '~/components/ui/separator';
 import { Icon } from '~/components/ui/icon';
 import { authClient } from '~/lib/authClient';
-import { useQueryClient } from '@tanstack/solid-query';
+import { useQuery, useQueryClient } from '@tanstack/solid-query';
 
 const sessionQueryOptions = {
   queryKey: ['auth', 'session'],
   queryFn: () => authClient.getSession(),
-} as const;
+};
 
 function SignInPage() {
   const [email, setEmail] = createSignal('test@test.com');
@@ -24,6 +24,15 @@ function SignInPage() {
   const auth = useAuthContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const sessionQuery = useQuery(() => sessionQueryOptions);
+
+  createEffect(() => {
+    const session = sessionQuery.data as any; // Using 'any' to bypass type errors for now
+    if (session?.data?.user) {
+      navigate({ to: '/dashboard', replace: true });
+    }
+  });
 
   const handleSignIn = async (e: Event) => {
     e.preventDefault();
@@ -35,8 +44,7 @@ function SignInPage() {
         setError(result.error.message);
       } else {
         await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
-        await queryClient.refetchQueries({ queryKey: ['auth', 'session'] });
-        navigate({ to: '/dashboard', replace: true });
+        // The effect will handle navigation when the query refetches and succeeds
       }
     } finally {
       setIsLoading(false);
@@ -105,7 +113,7 @@ export const Route = createFileRoute('/sign-in')({
     const { queryClient } = context;
 
     try {
-      const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+      const sessionData = await queryClient.ensureQueryData(sessionQueryOptions);
       if (sessionData?.data?.user) {
         throw redirect({
           to: '/dashboard',

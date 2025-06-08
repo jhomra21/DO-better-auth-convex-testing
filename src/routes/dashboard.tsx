@@ -35,7 +35,7 @@ import {
       const { queryClient } = context;
   
       try {
-        const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+        const sessionData = await queryClient.ensureQueryData(sessionQueryOptions);
         
         const isAuthenticated = !!sessionData?.data?.user;
     
