@@ -60,161 +60,36 @@ app.use('*', cors({
   credentials: true, 
 }));
 
-// Initialize Better Auth middleware
-app.use('*', async (c, next) => {
+// This middleware is modeled directly on the Better Auth documentation.
+// It initializes auth and sets the user/session in the context for all routes.
+app.use("*", async (c, next) => {
   const auth = createAuth(c.env);
-  c.set('auth', auth);
-  
-  let user: any = null;
-  let session: any = null;
-  console.log('[AUTH_MIDDLEWARE] Running global auth middleware');
+  c.set("auth", auth);
 
+  // Get session and set user/session context.
   try {
-    console.log('[AUTH_MIDDLEWARE] Attempting auth.api.getSession (cookie-based)');
-    const sessionData = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (sessionData && sessionData.user) {
-      user = sessionData.user;
-      session = sessionData.session;
-      console.log('[AUTH_MIDDLEWARE] User found via cookie session:', user?.id);
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session) {
+      c.set("user", session.user);
+      c.set("session", session.session);
     } else {
-      console.log('[AUTH_MIDDLEWARE] No user found via cookie session.');
+      c.set("user", null);
+      c.set("session", null);
     }
-  } catch (error) {
-    console.error('[AUTH_MIDDLEWARE] Error in auth.api.getSession:', error);
+  } catch {
+    c.set("user", null);
+    c.set("session", null);
   }
-
-  if (!user) {
-    console.log('[AUTH_MIDDLEWARE] No user from cookie, checking for Bearer token.');
-    const authHeader = c.req.header('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
-      try {
-        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
-        const sessionResult = await c.env.DB.prepare(
-          "SELECT * FROM session WHERE token = ?"
-        ).bind(token).first<any>();
-        
-        if (sessionResult) {
-          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
-          if (sessionResult.user_id) {
-            const userResult = await c.env.DB.prepare(
-              "SELECT * FROM user WHERE id = ?"
-            ).bind(sessionResult.user_id).first<any>();
-            
-            if (userResult) {
-              user = userResult;
-              session = sessionResult; 
-              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
-            } else {
-              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
-            }
-          } else {
-            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
-          }
-        } else {
-          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
-        }
-      } catch (dbError) {
-        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
-      }
-    } else {
-      console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
-    }
-  }
-
-  c.set('user', user);
-  c.set('session', session);
-  console.log('[AUTH_MIDDLEWARE] Final user ID set in context:', c.get('user')?.id);
   
   await next();
 });
 
-// Mount Better Auth handler for all auth routes
-app.on(['POST', 'GET', 'OPTIONS'], '/api/auth/*', async (c) => {
+// This route is modeled directly on the Better Auth documentation.
+// It delegates all /api/auth/* requests to the auth handler.
+app.on(["POST", "GET", "OPTIONS"], "/api/auth/*", (c) => {
   const auth = c.get('auth');
-  
-  // Get frontend URL from config helper
-  const frontendUrl = getFrontendUrl(c.env);
-    
-    try {
-    // Apply special headers for CORS
-    const headers = new Headers();
-    headers.append('Access-Control-Allow-Origin', c.req.header('Origin') || frontendUrl);
-    headers.append('Access-Control-Allow-Credentials', 'true');
-    headers.append('Access-Control-Expose-Headers', 'Content-Length, Set-Cookie, set-auth-token, Set-Auth-Token');
-    
-    // Use our wrapped handler that handles empty JSON bodies
-    const response = await auth.handler(c.req.raw);
-    
-    // Copy the headers from the auth response to our headers
-    response.headers.forEach((value, key) => {
-      headers.append(key, value);
-    });
-    
-    // Special handling for OAuth callbacks - check if it's a redirect response
-    const url = new URL(c.req.url);
-    const isOAuthCallback = url.pathname.includes('/callback/');
-    
-    if (isOAuthCallback && response.status >= 300 && response.status < 400) {
-      // Get the location header for redirect
-      
-      try {
-        // Extract the token from the response or find it in the DB
-        const authToken = response.headers.get('set-auth-token') || 
-                          response.headers.get('Set-Auth-Token');
-        
-        // Get frontend URL from config helper
-        const actualFrontendUrl = getFrontendUrl(c.env);
-        
-        if (authToken) {
-          headers.set('location', `${actualFrontendUrl}/?token=${encodeURIComponent(authToken)}`);
-        } else {
-          // If token not in headers, need to find the most recently created session
-          // This is necessary because Better Auth doesn't always expose the token in headers
-          
-          try {
-            // Get the most recently created session from the database
-            const sessionsResult = await c.env.DB.prepare(
-              "SELECT * FROM session ORDER BY created_at DESC LIMIT 1"
-            ).all();
-            
-            if (sessionsResult.results && sessionsResult.results.length > 0) {
-              const sessionRow = sessionsResult.results[0];
-              const dbToken = sessionRow.token;
-              
-              // Ensure the token is a string
-              if (typeof dbToken === 'string') {
-                headers.set('location', `${actualFrontendUrl}/?token=${encodeURIComponent(dbToken)}`);
-              } else {
-                headers.set('location', actualFrontendUrl);
-              }
-            } else {
-              headers.set('location', actualFrontendUrl);
-            }
-          } catch (dbError) {
-            headers.set('location', actualFrontendUrl);
-          }
-        }
-      } catch (error) {
-        console.error('Error handling OAuth callback:', error);
-        const errorRedirect = getSignInErrorUrl(c.env);
-        headers.set('location', errorRedirect);
-      }
-    }
-    
-    // Create a new response with our headers
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: headers
-    });
-  } catch (error) {
-    console.error('Auth error:', error);
-    return c.json({ error: 'Authentication error' }, 500);
-  }
+  return auth.handler(c.req.raw);
 });
-
 
 // Root endpoint
 app.get('/', (c: Context<{ Bindings: Env }>) => {

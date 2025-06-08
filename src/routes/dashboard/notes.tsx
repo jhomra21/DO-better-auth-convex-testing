@@ -422,4 +422,4 @@ export default function NotesPage() {
 
 export const Route = createFileRoute('/dashboard/notes')({
   component: NotesPage,
-});
+}); 
