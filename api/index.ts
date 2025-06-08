@@ -7,6 +7,11 @@ import { getFrontendUrl, getSignInErrorUrl } from './lib/config';
 import { notesRouter, notesWebSocketRouter } from './routes/notes';
 import { UserNotesDatabase } from './durable-objects/UserNotesDatabase';
 
+// Import Canvas related modules
+import { CanvasRoom } from './durable-objects/CanvasRoom';
+import { canvasRouter } from './routes/canvas';
+import { canvasWebSocketRouter } from './routes/canvas-ws';
+
 // Define the environment type for Hono
 type Env = {
     DB: D1Database; 
@@ -16,6 +21,7 @@ type Env = {
     GOOGLE_CLIENT_ID: string;
     NODE_ENV?: string; // Add NODE_ENV as an optional string property
     USER_NOTES_DATABASE: DurableObjectNamespace;
+    CANVAS_ROOM: DurableObjectNamespace; // Added for CanvasRoom DO
     // Add other bindings/variables like GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET if using social providers
     // GITHUB_CLIENT_ID?: string;
     // GITHUB_CLIENT_SECRET?: string;
@@ -56,25 +62,70 @@ app.use('*', cors({
 
 // Initialize Better Auth middleware
 app.use('*', async (c, next) => {
-  // Create auth instance
   const auth = createAuth(c.env);
   c.set('auth', auth);
   
-  // Get session and set user context
+  let user: any = null;
+  let session: any = null;
+  console.log('[AUTH_MIDDLEWARE] Running global auth middleware');
+
   try {
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (session) {
-      c.set('user', session.user);
-      c.set('session', session.session);
+    console.log('[AUTH_MIDDLEWARE] Attempting auth.api.getSession (cookie-based)');
+    const sessionData = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (sessionData && sessionData.user) {
+      user = sessionData.user;
+      session = sessionData.session;
+      console.log('[AUTH_MIDDLEWARE] User found via cookie session:', user?.id);
     } else {
-      c.set('user', null);
-      c.set('session', null);
+      console.log('[AUTH_MIDDLEWARE] No user found via cookie session.');
     }
   } catch (error) {
-    console.error('Error getting session:', error);
-    c.set('user', null);
-    c.set('session', null);
+    console.error('[AUTH_MIDDLEWARE] Error in auth.api.getSession:', error);
   }
+
+  if (!user) {
+    console.log('[AUTH_MIDDLEWARE] No user from cookie, checking for Bearer token.');
+    const authHeader = c.req.header('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
+      try {
+        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
+        const sessionResult = await c.env.DB.prepare(
+          "SELECT * FROM session WHERE token = ?"
+        ).bind(token).first<any>();
+        
+        if (sessionResult) {
+          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
+          if (sessionResult.user_id) {
+            const userResult = await c.env.DB.prepare(
+              "SELECT * FROM user WHERE id = ?"
+            ).bind(sessionResult.user_id).first<any>();
+            
+            if (userResult) {
+              user = userResult;
+              session = sessionResult; 
+              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
+            } else {
+              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
+            }
+          } else {
+            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
+          }
+        } else {
+          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
+        }
+      } catch (dbError) {
+        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
+      }
+    } else {
+      console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
+    }
+  }
+
+  c.set('user', user);
+  c.set('session', session);
+  console.log('[AUTH_MIDDLEWARE] Final user ID set in context:', c.get('user')?.id);
   
   await next();
 });
@@ -242,7 +293,11 @@ app.route('/api/notes', notesRouter);
 // WebSocket should be under a different path to avoid conflict
 app.route('/api/notes-ws', notesWebSocketRouter);
 
-// Export Durable Object class
-export { UserNotesDatabase };
+// Add Canvas routes
+app.route('/api/canvas', canvasRouter);
+app.route('/api/canvas-ws', canvasWebSocketRouter);
+
+// Export Durable Object classes
+export { UserNotesDatabase, CanvasRoom };
 
 export default app;

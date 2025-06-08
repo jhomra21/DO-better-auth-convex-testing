@@ -4,6 +4,7 @@ import { createQuery, createMutation, useQueryClient } from '@tanstack/solid-que
 import { Button } from '~/components/ui/button'; // Assuming Solid-UI button is here
 import { Input } from '~/components/ui/input';   // Assuming Solid-UI input is here
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '~/components/ui/card'; // Assuming Solid-UI card
+import { fetchWithAuth } from "~/lib/utils/fetchWithAuth"; // Import the shared utility
 import { getApiUrl } from '~/lib/utils';
 
 // Local type alias for CanvasRoom to avoid problematic cross-directory import for now
@@ -40,9 +41,7 @@ export const Route = createFileRoute('/dashboard/canvas/')({
 
 // Fetch canvas rooms
 const getCanvasRooms = async (): Promise<CanvasRoom[]> => {
-  const response = await fetch(`${getApiUrl()}/api/canvas/rooms`, {
-    credentials: 'include',
-  });
+  const response = await fetchWithAuth(`${getApiUrl()}/api/canvas/rooms`);
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(`Failed to fetch canvas rooms: ${response.status} ${errorBody || 'Unknown error'}`);
@@ -56,13 +55,9 @@ const getCanvasRooms = async (): Promise<CanvasRoom[]> => {
 
 // Create a new canvas room
 const createCanvasRoomAPI = async (roomName: string): Promise<CanvasRoom> => {
-  const response = await fetch(`${getApiUrl()}/api/canvas/rooms`, {
+  const response = await fetchWithAuth(`${getApiUrl()}/api/canvas/rooms`, {
     method: 'POST',
     body: JSON.stringify({ name: roomName }),
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
   if (!response.ok) {
     let errorMessage = 'Failed to create room with status: ' + response.status;

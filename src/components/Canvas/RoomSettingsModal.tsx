@@ -5,6 +5,7 @@ import { Input } from '~/components/ui/input';
 import { Checkbox } from '~/components/ui/checkbox';
 import { Label } from '~/components/ui/label';
 import { createMutation, useQueryClient } from '@tanstack/solid-query';
+import { fetchWithAuth } from '~/lib/utils/fetchWithAuth';
 import { getApiUrl } from '~/lib/utils';
 
 // Define a type for expected API error responses
@@ -66,11 +67,10 @@ export default function RoomSettingsModal(props: RoomSettingsModalProps) {
 
   const updateSettingsMutation = createMutation(() => ({
     mutationFn: async (payload: UpdateRoomSettingsPayload) => {
-      const response = await fetch(`${getApiUrl()}/api/canvas/rooms/${props.roomId}/settings`, {
+      const response = await fetchWithAuth(`${getApiUrl()}/api/canvas/rooms/${props.roomId}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'include',
       });
 
       if (!response.ok) {
