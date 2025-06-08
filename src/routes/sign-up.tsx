@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createSignal, createEffect } from 'solid-js';
 import { Link, createFileRoute, useNavigate, redirect } from '@tanstack/solid-router';
 import { useAuthContext } from '../lib/AuthProvider';
 import { Button } from '~/components/ui/button';
@@ -9,7 +9,7 @@ import GoogleSignInButton from '~/components/GoogleSignInButton';
 import { Separator } from '~/components/ui/separator';
 import { Icon } from '~/components/ui/icon';
 import { authClient } from '~/lib/authClient';
-import { useQueryClient } from '@tanstack/solid-query';
+import { useQuery, useQueryClient } from '@tanstack/solid-query';
 
 const sessionQueryOptions = {
   queryKey: ['auth', 'session'],
@@ -26,6 +26,15 @@ function SignUpPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const sessionQuery = useQuery(() => sessionQueryOptions);
+
+  createEffect(() => {
+    const session = sessionQuery.data as any;
+    if (session?.data?.user) {
+      navigate({ to: '/dashboard', replace: true });
+    }
+  });
+
   const handleSignUp = async (e: Event) => {
     e.preventDefault();
     setIsLoading(true);
@@ -34,11 +43,9 @@ function SignUpPage() {
       const result = await auth.signup(email(), password(), name());
       if (result.error) {
         setError(result.error.message);
-      } else {
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
-        await queryClient.refetchQueries({ queryKey: ['auth', 'session'] });
-        navigate({ to: '/dashboard', replace: true });
       }
+      // No need to invalidate or navigate here. The createEffect will
+      // handle navigation when the cache is updated by the signup function.
     } finally {
       setIsLoading(false);
     }

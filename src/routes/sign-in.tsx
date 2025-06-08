@@ -42,9 +42,6 @@ function SignInPage() {
       const result = await auth.login(email(), password());
       if (result.error) {
         setError(result.error.message);
-      } else {
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
-        // The effect will handle navigation when the query refetches and succeeds
       }
     } finally {
       setIsLoading(false);

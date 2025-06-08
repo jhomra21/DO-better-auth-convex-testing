@@ -78,23 +78,39 @@ export function useAuth(): UseAuthReturn {
   // The auth flow is ready when the initial fetch/refetch is no longer pending.
   const authReady = createMemo(() => !sessionQuery()?.isPending && !sessionQuery()?.isRefetching);
 
-  // Login function now uses authClient. The component will handle refetching.
+  // Login function now uses authClient and manually updates the session query on success.
   const login = async (email: string, password: string): Promise<AuthResult> => {
-    const { error } = await authClient.signIn.email({ email, password });
-    if (error) {
-      return { error: { message: error.message || '', code: error.code || undefined } };
+    const result = await authClient.signIn.email({ email, password });
+    if (result.error) {
+        return { error: { message: result.error.message || '', code: result.error.code || undefined } };
     }
-    // The component is now responsible for invalidating and refetching the session.
+    
+    // Manually update the session query cache with the data returned from the login.
+    // This avoids a race condition by not requiring an immediate refetch.
+    if (result.data) {
+        queryClient.setQueryData(['auth', 'session'], result.data);
+    } else {
+        // As a fallback, if login doesn't return data, invalidate to trigger a refetch.
+        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+    }
+    
     return { error: null };
   };
 
-  // Signup function now uses authClient. The component will handle refetching.
+  // Signup function now uses authClient and manually updates the session query on success.
   const signup = async (email: string, password: string, name: string): Promise<AuthResult> => {
-    const { error } = await authClient.signUp.email({ email, password, name });
-    if (error) {
-      return { error: { message: error.message || '', code: error.code || undefined } };
+    const result = await authClient.signUp.email({ email, password, name });
+    if (result.error) {
+        return { error: { message: result.error.message || '', code: result.error.code || undefined } };
     }
-    // The component is now responsible for invalidating and refetching the session.
+
+    // Manually update the session query cache with the data returned from signup.
+    if (result.data) {
+        queryClient.setQueryData(['auth', 'session'], result.data);
+    } else {
+        await queryClient.invalidateQueries({ queryKey: ['auth', 'session'] });
+    }
+
     return { error: null };
   };
 
