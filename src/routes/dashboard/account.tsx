@@ -1,7 +1,6 @@
-import { createFileRoute } from '@tanstack/solid-router';
+import { createFileRoute, redirect } from '@tanstack/solid-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
-import { createSignal, createEffect, createMemo, Show, For, onCleanup } from 'solid-js';
-import { protectedRouteLoader } from '~/lib/protectedRoute';
+import { createSignal, createEffect, createMemo, Show, For, onCleanup, type Accessor } from 'solid-js';
 import { 
   fetchProfile, 
   updateProfile, 
@@ -10,14 +9,28 @@ import {
   formatDate,
 } from '~/lib/databaseService';
 import { useAuthContext } from '~/lib/AuthProvider';
-import { Route as DashboardRoute } from '../dashboard';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '~/components/ui/card';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
+import { authClient } from '~/lib/authClient';
+
+const sessionQueryOptions = {
+  queryKey: ['auth', 'session'],
+  queryFn: () => authClient.getSession(),
+} as const;
 
 // Define types for loader data
 type LoaderData = {
+  session: {
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      // add other user properties
+    };
+    // add other session properties
+  };
   initialProfileData: Awaited<ReturnType<typeof fetchProfile>>;
   initialSessionsData: Awaited<ReturnType<typeof fetchSessions>>;
 };
@@ -29,8 +42,8 @@ const ONE_HOUR = 60 * 60 * 1000;
 // Account management component
 function AccountPage() {
   const queryClient = useQueryClient();
-  const sessionData = DashboardRoute.useLoaderData();
-  const user = () => sessionData()?.user;
+  const loaderData = Route.useLoaderData() as Accessor<LoaderData>;
+  const user = () => loaderData()?.session.user;
   const auth = useAuthContext();
   
   // Profile editing
@@ -43,7 +56,7 @@ function AccountPage() {
     queryKey: ['profile'],
     queryFn: fetchProfile,
     retry: 1,
-    initialData: sessionData()?.initialProfileData,
+    initialData: loaderData()?.initialProfileData,
     staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
     gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
   }));
@@ -53,7 +66,7 @@ function AccountPage() {
     queryKey: ['sessions'],
     queryFn: fetchSessions,
     retry: 1,
-    initialData: sessionData()?.initialSessionsData,
+    initialData: loaderData()?.initialSessionsData,
     staleTime: FIVE_MINUTES, // Consider data fresh for 5 minutes
     gcTime: ONE_HOUR, // Keep unused data in cache for 1 hour
   }));
@@ -168,5 +181,44 @@ function AccountPage() {
 
 export const Route = createFileRoute('/dashboard/account')({
   component: AccountPage,
-  loader: protectedRouteLoader as any,
+  loader: async ({ context, location }) => {
+    const { queryClient } = context;
+
+    try {
+      const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+      
+      const isAuthenticated = !!sessionData?.data?.user;
+  
+      if (!isAuthenticated) {
+        throw redirect({
+          to: '/sign-in',
+          search: {
+            redirect: location.href,
+          },
+        });
+      }
+  
+      // Pre-fetch profile and sessions in the loader.
+      const initialProfileData = await queryClient.fetchQuery({ queryKey: ['profile'], queryFn: fetchProfile });
+      const initialSessionsData = await queryClient.fetchQuery({ queryKey: ['sessions'], queryFn: fetchSessions });
+
+      return {
+        session: sessionData.data,
+        initialProfileData,
+        initialSessionsData
+      };
+
+    } catch (error) {
+      if (error instanceof Response && error.headers.get('Location')) {
+        throw error; // Re-throw the redirect response
+      }
+      console.error('Error during authentication check in loader, redirecting.', error);
+      throw redirect({
+        to: '/sign-in',
+        search: {
+          redirect: location.href,
+        },
+      });
+    }
+  },
 }); 

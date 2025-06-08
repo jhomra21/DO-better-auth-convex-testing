@@ -1,7 +1,6 @@
 import { createSignal } from 'solid-js';
-import { Link, createFileRoute, useNavigate } from '@tanstack/solid-router';
+import { Link, createFileRoute, useNavigate, redirect } from '@tanstack/solid-router';
 import { useAuthContext } from '../lib/AuthProvider';
-import { publicOnlyLoader } from '../lib/protectedRoute';
 import { Button } from '~/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '~/components/ui/card';
 import { Input } from '~/components/ui/input';
@@ -9,6 +8,12 @@ import { Label } from '~/components/ui/label';
 import GoogleSignInButton from '~/components/GoogleSignInButton';
 import { Separator } from '~/components/ui/separator';
 import { Icon } from '~/components/ui/icon';
+import { authClient } from '~/lib/authClient';
+
+const sessionQueryOptions = {
+  queryKey: ['auth', 'session'],
+  queryFn: () => authClient.getSession(),
+} as const;
 
 function SignUpPage() {
   const [name, setName] = createSignal('');
@@ -104,5 +109,23 @@ function SignUpPage() {
 
 export const Route = createFileRoute('/sign-up')({
   component: SignUpPage,
-  loader: publicOnlyLoader as any,
+  loader: async ({ context }) => {
+    const { queryClient } = context;
+
+    try {
+      const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+      if (sessionData?.data?.user) {
+        throw redirect({
+          to: '/dashboard',
+        });
+      }
+    } catch (error) {
+      if (error instanceof Response && error.headers.get('Location')) {
+        throw error; // Re-throw the redirect response
+      }
+      // Errors are expected if the user is not logged in, so we can ignore them.
+    }
+  
+    return null;
+  },
 }); 

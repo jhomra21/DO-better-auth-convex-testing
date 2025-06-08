@@ -104,6 +104,12 @@ export const createAuth = (env: Env) => {
       expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
       updateAge: 60 * 60 * 24, // Update session every 24 hours
       strategy: "database", // Use stateful database sessions for better cross-domain reliability
+      // Enable cookie caching for better performance.
+      // This reduces database lookups by storing session data in a short-lived, signed cookie.
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 5 // 5 minutes in seconds
+      }
     },
     // Use drizzleAdapter with the initialized db instance
     database: drizzleAdapter(db, {

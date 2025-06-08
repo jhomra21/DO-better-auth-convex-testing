@@ -13,6 +13,7 @@ import { AuthProvider } from '~/lib/AuthProvider'
 
 // Import the generated route tree - this should now work after Vite restart
 import { routeTree } from './routeTree.gen' 
+import { type RouterContext } from './routes/__root' // Import context type
 
 import './styles.css'
 
@@ -27,9 +28,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Make queryClient globally accessible for session caching
-window.__QUERY_CLIENT = queryClient;
-
 // Create router with the generated routeTree and provide context
 const router = createRouter({
   routeTree,
@@ -40,21 +38,13 @@ const router = createRouter({
   // The type for this context should match what `__root.tsx` expects.
   context: {
     queryClient, // Provide queryClient to all routes via context
-  }
-  // If RouterContext interface from __root.tsx is imported, can type context:
-  // context: { queryClient } satisfies RouterContext,
+  } satisfies RouterContext,
 })
 
 // Register the router instance for type safety
 declare module '@tanstack/solid-router' {
   interface Register {
     router: typeof router
-  }
-}
-// Add type declaration for global queryClient
-declare global {
-  interface Window {
-    __QUERY_CLIENT: typeof queryClient;
   }
 }
 function MainApp() {

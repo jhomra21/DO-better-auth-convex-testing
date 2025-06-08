@@ -1,6 +1,7 @@
 import {
     Outlet,
     createFileRoute,
+    redirect
   } 
   from '@tanstack/solid-router'
   import { Suspense } from 'solid-js'
@@ -15,17 +16,53 @@ import {
   import { Separator } from "~/components/ui/separator"
   import { AppSidebar } from '~/components/AppSidebar'
   import { Breadcrumbs } from '~/components/Breadcrumbs'
-import { protectedRouteLoader } from '~/lib/protectedRoute'
-  
+  import { authClient } from '~/lib/authClient'
+
   // Define router context type (can be shared or defined in a central types file too)
   export interface RouterContext {
     queryClient: QueryClient
   }
   
+  const sessionQueryOptions = {
+    queryKey: ['auth', 'session'],
+    queryFn: () => authClient.getSession(),
+  } as const;
+  
   // Create root route with context
   export const Route = createFileRoute('/dashboard')({
     component: DashboardPage,
-    loader: protectedRouteLoader as any,
+    loader: async ({ context, location }) => {
+      const { queryClient } = context;
+  
+      try {
+        const sessionData = await queryClient.fetchQuery(sessionQueryOptions);
+        
+        const isAuthenticated = !!sessionData?.data?.user;
+    
+        if (!isAuthenticated) {
+          throw redirect({
+            to: '/sign-in',
+            search: {
+              redirect: location.href,
+            },
+          });
+        }
+    
+        return sessionData.data;
+      } catch (error) {
+        // Handle redirect errors or other exceptions
+        if (error instanceof Response && error.headers.get('Location')) {
+          throw error; // Re-throw the redirect response
+        }
+        console.error('Error during authentication check in loader, redirecting.', error);
+        throw redirect({
+          to: '/sign-in',
+          search: {
+            redirect: location.href,
+          },
+        });
+      }
+    },
   });
   
   function DashboardPage() {

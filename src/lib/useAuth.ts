@@ -36,7 +36,7 @@ export interface UseAuthReturn {
   session: () => Session | null;
   login: (email: string, password: string) => Promise<AuthResult>;
   signup: (email: string, password: string, name: string) => Promise<AuthResult>;
-  logout: () => Promise<void>;
+  logout: () => Promise<AuthResult>;
   loginWithGoogle: (callbackURL?: string) => Promise<AuthResult>;
   authReady: () => boolean;
 }
@@ -101,9 +101,17 @@ export function useAuth(): UseAuthReturn {
   };
 
   // Logout function now uses authClient and refetches session.
-  const logout = async (): Promise<void> => {
-    await authClient.signOut();
-    await refetchSession();
+  const logout = async (): Promise<AuthResult> => {
+    const { error } = await authClient.signOut();
+    if (error) {
+      return { error: { message: error.message || '', code: error.code || undefined } };
+    }
+    // Instead of just invalidating, we reset the query.
+    // This immediately removes the session data from the cache,
+    // ensuring that any subsequent renders see an unauthenticated state
+    // before the navigation away from the protected route begins.
+    await queryClient.resetQueries({ queryKey: ['auth', 'session'] });
+    return { error: null };
   };
 
   // Google login function now uses the helper from authClient.

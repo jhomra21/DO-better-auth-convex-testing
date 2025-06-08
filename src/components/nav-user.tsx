@@ -42,8 +42,8 @@ export const NavUser: Component = () => {
     if (isMobile()) {
       setOpenMobile(false);
     }
-    await auth.logout()
-    navigate({ to: "/" })
+    await auth.logout();
+    navigate({ to: "/", replace: true });
   }
 
   return (
