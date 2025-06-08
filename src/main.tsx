@@ -11,16 +11,10 @@ import { render } from 'solid-js/web'
 import { QueryClient, QueryClientProvider } from '@tanstack/solid-query'
 import { AuthProvider } from '~/lib/AuthProvider'
 
-// Import auth initialization
-import { initAuth } from '~/lib/authClient'
-
 // Import the generated route tree - this should now work after Vite restart
 import { routeTree } from './routeTree.gen' 
 
 import './styles.css'
-
-// Initialize auth (check for token in URL, etc.)
-initAuth();
 
 // Remove duplicate session prefetch since authClient.ts already handles this
 // authClient.ts has its own initialization logic that runs when imported

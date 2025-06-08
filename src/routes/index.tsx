@@ -1,15 +1,22 @@
-import { createFileRoute } from '@tanstack/solid-router';
+import { createFileRoute, useRouter } from '@tanstack/solid-router';
 import type { Component } from 'solid-js';
-import { Show, createMemo } from 'solid-js';
-import { GlobalAuth } from '~/lib/AuthProvider';
-import { publicOnlyLoader } from '~/lib/protectedRoute';
+import { Show } from 'solid-js';
 import { Button } from '~/components/ui/button';
-import { useRouter } from '@tanstack/solid-router';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '~/components/ui/card';
 import Footer from '~/components/Footer';
+import { authClient } from '~/lib/authClient';
+import type { QueryClient } from '@tanstack/solid-query';
+import type { RouterContext } from './dashboard'; // Reuse context from dashboard
+
+const sessionQueryOptions = {
+  queryKey: ["auth", "session"],
+  retry: 0,
+  queryFn: () => authClient.getSession(),
+};
 
 const HomePage: Component = () => {
-  const isAuthenticated = createMemo(() => GlobalAuth.isAuthenticated());
+  const session = Route.useLoaderData();
+  const isAuthenticated = () => !!session()?.data?.user;
   const router = useRouter();
 
   return (
@@ -75,6 +82,17 @@ const HomePage: Component = () => {
 
 export const Route = createFileRoute('/')({
   component: HomePage,
-  // Allow authenticated users to access home page by setting skipRedirect to true
-  beforeLoad: () => publicOnlyLoader({ skipRedirect: true }),
+  loader: async ({ context }) => {
+    const { queryClient } = context as RouterContext;
+    try {
+      // fetchQuery is perfect here: it gets data from the cache if available,
+      // fetches if not, but doesn't trigger global loading states or throw errors
+      // on failed fetches, which is ideal for a non-blocking auth check.
+      const session = await queryClient.fetchQuery(sessionQueryOptions);
+      return session;
+    } catch {
+      // If there's a network or other error, treat as not authenticated.
+      return null;
+    }
+  },
 });

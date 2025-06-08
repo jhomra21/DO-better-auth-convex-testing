@@ -153,14 +153,6 @@ class NotesAPI {
     }
   }
   
-  private getHeaders(): HeadersInit {
-    const token = localStorage.getItem('bearer_token');
-    return {
-      'Content-Type': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` }),
-    };
-  }
-
   // Subscribe to real-time updates
   subscribe(callback: NotesUpdateCallback): () => void {
     this.updateCallbacks.push(callback);
@@ -492,7 +484,10 @@ class NotesAPI {
     }
     
     const response = await fetch(url.toString(), {
-      headers: this.getHeaders(),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       // Use no-cache when forcing refresh
       cache: forceRefresh ? 'no-cache' : 'default'
     });
@@ -511,8 +506,9 @@ class NotesAPI {
     if (this.socket?.readyState === WebSocket.OPEN || 
         this.socket?.readyState === WebSocket.CONNECTING) return;
     
-    const token = localStorage.getItem('bearer_token');
-    if (!token) return;
+    // We no longer need to manually get a token from local storage.
+    // The browser will handle sending the httpOnly cookie automatically
+    // for the WebSocket connection handshake, provided the backend is configured for it.
     
     // Clean up any existing socket
     this.cleanupConnection();
@@ -523,9 +519,8 @@ class NotesAPI {
       this._clientId = persistedClientId;
     }
     
-    // Create new connection with the token and client ID if available
+    // Create new connection. The browser will send cookies automatically.
     const wsUrl = new URL(`${getWsUrl()}/api/notes-ws/ws`);
-    wsUrl.searchParams.append('token', token);
     if (this._clientId) {
       wsUrl.searchParams.append('clientId', this._clientId);
     }
@@ -633,7 +628,10 @@ class NotesAPI {
   async createNote(text: string): Promise<Note> {
     const response = await fetch(`${getApiUrl()}/api/notes`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ text }),
     });
     
@@ -648,7 +646,10 @@ class NotesAPI {
   async updateNote(id: string, text: string): Promise<Note> {
     const response = await fetch(`${getApiUrl()}/api/notes/${id}`, {
       method: 'PATCH',
-      headers: this.getHeaders(),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ text }),
     });
     
@@ -663,7 +664,10 @@ class NotesAPI {
   async deleteNote(id: string): Promise<void> {
     const response = await fetch(`${getApiUrl()}/api/notes/${id}`, {
       method: 'DELETE',
-      headers: this.getHeaders(),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
     
     if (!response.ok) {

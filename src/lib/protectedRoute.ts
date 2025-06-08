@@ -1,123 +1,84 @@
-import { redirect } from "@tanstack/solid-router";
-import { hasAuthToken, getCachedSession } from './authClient';
-import { GlobalAuth } from './AuthProvider';
+import { redirect, type RouteLoaderFn } from "@tanstack/solid-router";
+import { authClient } from "./authClient";
+import type { QueryClient } from "@tanstack/solid-query";
+import type { User, Session } from "./useAuth";
 
-// Global variable to hold the most recent authenticated session
-// This allows bypassing TanStack Query cache immediately after login
-let lastAuthSession: any = null;
-
-// Function to set the last authenticated session (called by login/signup functions)
-export function setLastAuthSession(sessionData: any) {
-  lastAuthSession = sessionData;
-  // Also update the global auth state
-  GlobalAuth.setIsAuthenticated(true);
-  GlobalAuth.setUser(sessionData.user);
+// This assumes you have setup your router context to include the queryClient.
+// e.g., in your src/index.tsx: new Router({ routeTree, context: { queryClient } })
+interface RouterContext {
+  queryClient: QueryClient;
 }
 
-/**
- * Creates a protected route loader that checks auth status synchronously
- * and redirects to sign-in if not authenticated.
- */
-export function protectedLoader() {
-  // Check global auth state first (most reliable)
-  if (GlobalAuth.isAuthenticated()) {
-    return { token: localStorage.getItem("bearer_token") };
+// Define the shape of the data returned by authClient.getSession()
+type SessionData = {
+  data: {
+    user: User | null;
+    session: Session | null;
+    authenticated: boolean;
   }
-  
-  // Fallback to token check
-  if (!hasAuthToken()) {
+};
+
+const sessionQueryOptions = {
+  queryKey: ["auth", "session"],
+  // We don't want to retry on failure for auth checks, as it can cause loops
+  // or unwanted redirects. If it fails, it fails.
+  retry: 0,
+  queryFn: () => authClient.getSession(),
+};
+
+/**
+ * A loader for protected routes.
+ * It ensures the user is authenticated by fetching the session.
+ * If the user is not authenticated, it redirects to the sign-in page.
+ * It provides the session data to the route component.
+ *
+ * Usage in a route definition:
+ * loader: protectedRouteLoader
+ */
+export const protectedRouteLoader: RouteLoaderFn = async ({ context, location }) => {
+  const { queryClient } = context as RouterContext;
+
+  try {
+    const session = await queryClient.ensureQueryData(sessionQueryOptions);
+    if (!session?.data?.user) {
+      throw new Error("User not authenticated");
+    }
+    return session.data;
+  } catch (error) {
+    console.error("Authentication check failed, redirecting to sign-in.", error);
     throw redirect({
       to: "/sign-in",
       search: {
-        redirect: window.location.pathname + window.location.search
-      }
+        redirect: location.pathname + location.search,
+      },
     });
   }
-
-  // Return the token for immediate use while the async check proceeds
-  return { token: localStorage.getItem("bearer_token") };
-}
+};
 
 /**
- * Async session loader that uses TanStack Query's caching
- * to avoid redundant API calls for session validation
+ * A loader for public-only routes (e.g., sign-in, sign-up).
+ * It checks if a user is already authenticated.
+ * If so, it redirects them to the dashboard.
+ *
+ * Usage in a route definition:
+ * loader: publicOnlyLoader
  */
-export async function loadSession() {
+export const publicOnlyLoader: RouteLoaderFn = async ({ context }) => {
+  const { queryClient } = context as RouterContext;
+
   try {
-    // First check if we have a fresh auth session from recent login/signup
-    if (lastAuthSession) {
-      // Use the session and clear it for next time
-      const sessionData = lastAuthSession;
-      lastAuthSession = null; // Clear after use
-      return {
-        session: sessionData.session,
-        user: sessionData.user
-      };
-    }
-    
-    // Check global auth state
-    if (GlobalAuth.isAuthenticated() && GlobalAuth.user()) {
-      // If we have user data in global auth state, use it
-      return {
-        user: GlobalAuth.user(),
-        session: { id: 'global-session' } // Placeholder session
-      };
-    }
-    
-    // Otherwise, use cached session data from TanStack Query
-    const sessionData = await getCachedSession();
-    
-    if (!sessionData || !sessionData.authenticated) {
+    // Use fetchQuery to check for a session without triggering loading indicators.
+    // It checks the cache first, then fetches if stale.
+    const session = await queryClient.fetchQuery(sessionQueryOptions);
+    if (session?.data?.user) {
       throw redirect({
-        to: "/sign-in",
-        search: {
-          redirect: window.location.pathname + window.location.search
-        }
+        to: "/dashboard",
       });
     }
-    
-    return {
-      session: sessionData.session,
-      user: sessionData.user
-    };
   } catch (error) {
-    console.error("Error loading session:", error);
-    throw redirect({
-      to: "/sign-in",
-      search: {
-        redirect: window.location.pathname + window.location.search
-      }
-    });
-  }
-}
-
-/**
- * Public route loader that redirects to home if already authenticated
- * Used for sign-in and sign-up pages
- * 
- * @param options Optional settings
- * @param options.skipRedirect If true, don't redirect even if authenticated (for home page)
- */
-export function publicOnlyLoader(options?: { skipRedirect?: boolean }) {
-  // If skipRedirect is true, don't redirect authenticated users
-  if (options?.skipRedirect) {
-    return {};
+    // Error indicates no active session, which is expected on public routes.
+    // We can safely ignore it and allow rendering the route.
   }
 
-  // Check global auth state first
-  if (GlobalAuth.isAuthenticated()) {
-    throw redirect({
-      to: "/dashboard"
-    });
-  }
-  
-  // Check if user is already authenticated via token
-  if (hasAuthToken()) {
-    // Redirect to dashboard
-    throw redirect({
-      to: "/dashboard"
-    });
-  }
-  
   return {};
-} 
+}; 

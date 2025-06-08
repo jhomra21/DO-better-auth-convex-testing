@@ -1,70 +1,52 @@
 import { createSignal } from 'solid-js';
-import type { Component } from 'solid-js';
-import { useAuthContext, GlobalAuth } from '~/lib/AuthProvider';
-import { Show } from 'solid-js';
-import { useRouter } from '@tanstack/solid-router';
+import { useAuthContext } from '~/lib/AuthProvider';
 import { Button } from './ui/button';
-import { Icon } from './ui/icon';
 
 interface GoogleSignInButtonProps {
   callbackURL?: string;
-  class?: string;
 }
 
-const GoogleSignInButton: Component<GoogleSignInButtonProps> = (props) => {
-  const auth = useAuthContext();
-  const router = useRouter();
+export default function GoogleSignInButton(props: GoogleSignInButtonProps) {
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
+  const auth = useAuthContext();
 
-  const handleGoogleSignIn = async () => {
+  const handleSignIn = async () => {
     setIsLoading(true);
     setError(null);
-
     try {
       const result = await auth.loginWithGoogle(props.callbackURL);
       if (result.error) {
         setError(result.error.message);
-      } else if (GlobalAuth.isAuthenticated() && props.callbackURL) {
-        // If we have global auth state and a callback URL, try router navigation
-        try {
-          router.navigate({ to: props.callbackURL });
-        } catch (e) {
-          console.error("Router navigation failed after Google login, using direct navigation", e);
-          window.location.href = props.callbackURL;
-        }
+        setIsLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
+      // On success, the browser will be redirected, so we don't need to set loading to false.
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred during Google Sign-In.');
       setIsLoading(false);
     }
   };
 
   return (
-    <div class="w-full">
+    <div class="space-y-2">
       <Button
-        variant="sf-compute"
-        type="button"
-        onClick={handleGoogleSignIn}
+        variant="outline"
+        class="w-full"
+        onClick={handleSignIn}
         disabled={isLoading()}
-        class={`flex w-full items-center justify-center gap-2 rounded-md border bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${props.class || ''}`}
       >
-        <Show when={!isLoading()} fallback={
-          <div class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600"></div>
-        }>
-          <Icon name="google" />
-          <span>Sign in with Google</span>
-        </Show>
+        {isLoading() ? (
+          'Redirecting...'
+        ) : (
+          <>
+            <svg class="mr-2 h-4 w-4" aria-hidden="true" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+              <path fill="currentColor" d="M488 261.8C488 403.3 381.5 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 21.2 174 57.9l-66.2 66.2C324.1 100.3 288.9 88 248 88c-88.3 0-160 71.7-160 160s71.7 160 160 160c94.4 0 135.2-72.3 140.9-109.2H248v-75.5h236.1c2.3 12.7 3.9 26.1 3.9 40.7z"></path>
+            </svg>
+            Sign in with Google
+          </>
+        )}
       </Button>
-      
-      <Show when={error()}>
-        <p class="mt-2 text-sm text-red-600" role="alert">
-          {error()}
-        </p>
-      </Show>
+      {error() && <p class="text-red-500 text-sm">{error()}</p>}
     </div>
   );
-};
-
-export default GoogleSignInButton; 
+} 

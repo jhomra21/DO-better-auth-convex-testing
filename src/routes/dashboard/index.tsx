@@ -2,12 +2,14 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/solid-router';
 import { For, createMemo, children } from 'solid-js';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '~/components/ui/card';
 import { Button } from '~/components/ui/button';
-import { GlobalAuth, useAuthContext } from '~/lib/AuthProvider';
+import { useAuthContext } from '~/lib/AuthProvider';
 import Footer from '~/components/Footer';
+import { Route as DashboardRoute } from '../dashboard';
 
 
 export function DashboardIndex() {
-  const user = () => GlobalAuth.user();
+  const sessionData = DashboardRoute.useLoaderData();
+  const user = () => sessionData()?.user;
   const auth = useAuthContext();
   const navigate = useNavigate();
   const dashboardItems = [
@@ -74,7 +76,7 @@ export function DashboardIndex() {
     <div class="container py-8 px-4 mx-auto max-w-5xl flex flex-col min-h-screen">
       <div class="flex-grow">
         <div class="mb-10">
-          <h1 class="text-2xl font-semibold mb-2">Welcome, {user()?.name || 'test'}</h1>
+          <h1 class="text-2xl font-semibold mb-2">Welcome, {user()?.name || 'User'}</h1>
           <p class="text-muted-foreground text-sm">
             Each user gets their own isolated database via Durable Objects
           </p>
