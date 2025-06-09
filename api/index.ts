@@ -67,36 +67,27 @@ app.use('*', async (c, next) => {
   
   let user: any = null;
   let session: any = null;
-  console.log('[AUTH_MIDDLEWARE] Running global auth middleware');
 
   try {
-    console.log('[AUTH_MIDDLEWARE] Attempting auth.api.getSession (cookie-based)');
     const sessionData = await auth.api.getSession({ headers: c.req.raw.headers });
     if (sessionData && sessionData.user) {
       user = sessionData.user;
       session = sessionData.session;
-      console.log('[AUTH_MIDDLEWARE] User found via cookie session:', user?.id);
-    } else {
-      console.log('[AUTH_MIDDLEWARE] No user found via cookie session.');
-    }
+    } 
   } catch (error) {
     console.error('[AUTH_MIDDLEWARE] Error in auth.api.getSession:', error);
   }
 
   if (!user) {
-    console.log('[AUTH_MIDDLEWARE] No user from cookie, checking for Bearer token.');
     const authHeader = c.req.header('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
       try {
-        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
         const sessionResult = await c.env.DB.prepare(
           "SELECT * FROM session WHERE token = ?"
         ).bind(token).first<any>();
         
         if (sessionResult) {
-          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
           if (sessionResult.user_id) {
             const userResult = await c.env.DB.prepare(
               "SELECT * FROM user WHERE id = ?"
@@ -105,27 +96,17 @@ app.use('*', async (c, next) => {
             if (userResult) {
               user = userResult;
               session = sessionResult; 
-              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
-            } else {
-              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
-            }
-          } else {
-            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
-          }
-        } else {
-          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
-        }
+            } 
+          } 
+        } 
       } catch (dbError) {
         console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
       }
-    } else {
-      console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
-    }
+    } 
   }
 
   c.set('user', user);
   c.set('session', session);
-  console.log('[AUTH_MIDDLEWARE] Final user ID set in context:', c.get('user')?.id);
   
   await next();
 });
