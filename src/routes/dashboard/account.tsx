@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/solid-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/solid-query';
 import { createSignal, createEffect, createMemo, Show, For, onCleanup } from 'solid-js';
 import { protectedLoader, loadSession } from '~/lib/protectedRoute';
+import { GlobalAuth } from '~/lib/AuthProvider';
 import { 
   fetchProfile, 
   updateProfile, 
@@ -62,6 +63,8 @@ function AccountPage() {
   const isLoadingProfile = createMemo(() => profileQuery.isLoading);
   // Create memoized value for profile error state
   const hasProfileError = createMemo(() => profileQuery.isError);
+  // Get the current session ID from global auth state
+  const currentSessionId = createMemo(() => GlobalAuth.session()?.id);
 
   // Update profile mutation
   const updateProfileMutation = useMutation(() => ({
@@ -238,6 +241,11 @@ function AccountPage() {
             <For each={sessionsData()}>{(session) =>
               <li class="p-4 border border-gray-200 dark:border-gray-700 rounded-md flex justify-between items-center">
                 <div>
+                  <Show when={session.id === currentSessionId()}>
+                    <span class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200 last:mr-0 mr-1">
+                        Current
+                    </span>
+                  </Show>
                   <p class="text-sm font-medium">
                     Created: <span class="font-normal">{formatDate(session.created_at)}</span>
                   </p>
@@ -250,24 +258,24 @@ function AccountPage() {
                     </p>
                   </Show>
                   <Show when={session.user_agent}>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
                       Device: {session.user_agent}
                     </p>
                   </Show>
                 </div>
                 <button
                   onClick={() => handleRevokeSession(session.id)}
-                  disabled={revokeSessionMutation.isPending && revokeSessionMutation.variables === session.id}
-                  class="py-1 px-3 text-sm font-medium rounded-md text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+                  disabled={revokeSessionMutation.isPending || session.id === currentSessionId()}
+                  class="ml-4 py-1 px-3 text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
                 >
-                  {revokeSessionMutation.isPending && revokeSessionMutation.variables === session.id ? 'Revoking...' : 'Revoke'}
+                  {revokeSessionMutation.isPending ? 'Revoking...' : 'Revoke'}
                 </button>
               </li>
             }</For>
           </ul>
         </Show>
         
-        <Show when={sessionsData().length === 0 && !isLoadingSessions()}>
+        <Show when={!isLoadingSessions() && sessionsData().length === 0}>
           <p class="text-gray-500 dark:text-gray-400">No active sessions found.</p>
         </Show>
       </section>

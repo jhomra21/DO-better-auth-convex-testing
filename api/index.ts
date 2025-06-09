@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { createAuth } from './lib/auth';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import protectedRoutes from './routes/protected';
 import { getFrontendUrl, getSignInErrorUrl } from './lib/config';
 import { notesRouter, notesWebSocketRouter } from './routes/notes';
@@ -15,6 +15,7 @@ import { canvasWebSocketRouter } from './routes/canvas-ws';
 // Define the environment type for Hono
 type Env = {
     DB: D1Database; 
+    SESSIONS_KV: KVNamespace;
     BETTER_AUTH_SECRET: string;
     BETTER_AUTH_URL: string;
     GOOGLE_CLIENT_SECRET: string;
@@ -64,68 +65,24 @@ app.use('*', cors({
 app.use('*', async (c, next) => {
   const auth = createAuth(c.env);
   c.set('auth', auth);
-  
+
   let user: any = null;
   let session: any = null;
-  console.log('[AUTH_MIDDLEWARE] Running global auth middleware');
 
   try {
-    console.log('[AUTH_MIDDLEWARE] Attempting auth.api.getSession (cookie-based)');
+    // getSession will check for session cookie and Authorization header,
+    // and validate against the KV store via secondaryStorage config.
     const sessionData = await auth.api.getSession({ headers: c.req.raw.headers });
     if (sessionData && sessionData.user) {
       user = sessionData.user;
       session = sessionData.session;
-      console.log('[AUTH_MIDDLEWARE] User found via cookie session:', user?.id);
-    } else {
-      console.log('[AUTH_MIDDLEWARE] No user found via cookie session.');
-    }
+    } 
   } catch (error) {
     console.error('[AUTH_MIDDLEWARE] Error in auth.api.getSession:', error);
   }
 
-  if (!user) {
-    console.log('[AUTH_MIDDLEWARE] No user from cookie, checking for Bearer token.');
-    const authHeader = c.req.header('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
-      try {
-        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
-        const sessionResult = await c.env.DB.prepare(
-          "SELECT * FROM session WHERE token = ?"
-        ).bind(token).first<any>();
-        
-        if (sessionResult) {
-          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
-          if (sessionResult.user_id) {
-            const userResult = await c.env.DB.prepare(
-              "SELECT * FROM user WHERE id = ?"
-            ).bind(sessionResult.user_id).first<any>();
-            
-            if (userResult) {
-              user = userResult;
-              session = sessionResult; 
-              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
-            } else {
-              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
-            }
-          } else {
-            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
-          }
-        } else {
-          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
-        }
-      } catch (dbError) {
-        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
-      }
-    } else {
-      console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
-    }
-  }
-
   c.set('user', user);
   c.set('session', session);
-  console.log('[AUTH_MIDDLEWARE] Final user ID set in context:', c.get('user')?.id);
   
   await next();
 });
@@ -227,9 +184,11 @@ app.get('/session', async (c) => {
   const session = c.get('session');
   
   // Debug logging
+  console.log('[SESSION_ENDPOINT] User in context:', user?.id);
+  console.log('[SESSION_ENDPOINT] Session in context:', session?.id);
   
-  
-  // Check if we have a user from context (cookie-based auth)
+  // The global middleware has already done the work of validating the session
+  // from cookie or token and setting the context. We just return it.
   if (user) {
     return c.json({
       authenticated: true,
@@ -238,48 +197,7 @@ app.get('/session', async (c) => {
     });
   }
   
-  // If no user in context, try to get it from the Authorization header
-  const authHeader = c.req.header('Authorization');
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    
-    try {
-      // Find session by token
-      const sessionResult = await c.env.DB.prepare(
-        "SELECT * FROM session WHERE token = ?"
-      ).bind(token).first();
-      
-      if (!sessionResult) {
-        return c.json({
-          authenticated: false,
-          message: 'Invalid token'
-        });
-      }
-      
-      // Get user from session
-      const userResult = await c.env.DB.prepare(
-          "SELECT * FROM user WHERE id = ?"
-      ).bind(sessionResult.user_id).first();
-        
-      if (!userResult) {
-        return c.json({
-          authenticated: false,
-          message: 'User not found'
-        });
-      }
-      
-      return c.json({
-        authenticated: true,
-        user: userResult,
-        session: sessionResult
-      });
-    } catch (error) {
-      console.error('Error getting session by token:', error);
-    }
-  }
-  
-  // No valid authentication
+  // No valid authentication found by the global middleware
   return c.json({
     authenticated: false
   });

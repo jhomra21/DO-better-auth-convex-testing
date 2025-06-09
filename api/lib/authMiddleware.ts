@@ -1,79 +1,49 @@
 import type { MiddlewareHandler } from 'hono';
-import type { D1Database } from '@cloudflare/workers-types';
+import { createAuth } from '../lib/auth';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+
+type Env = {
+	DB: D1Database;
+	SESSIONS_KV: KVNamespace;
+	BETTER_AUTH_SECRET: string;
+	BETTER_AUTH_URL: string;
+	GOOGLE_CLIENT_SECRET: string;
+	GOOGLE_CLIENT_ID: string;
+	NODE_ENV?: string;
+};
+
+type HonoContext = {
+  Variables: {
+    user: any;
+    session: any;
+  },
+  Bindings: Env
+}
 
 /**
- * Middleware to protect routes that require authentication
- * This middleware checks if the user is authenticated and returns a 401 if not
- * It now properly handles both cookie-based auth and JWT token auth
+ * Middleware to protect routes that require authentication.
+ * This middleware relies on the global middleware in `api/index.ts` to have
+ * already authenticated the user and set the `user` object in the context.
+ * This simply checks for the presence of the user and returns 401 if not found.
  */
-export const authMiddleware: MiddlewareHandler = async (c, next) => {
-  // Check if we already have a user from the global middleware
+export const authMiddleware: MiddlewareHandler<HonoContext> = async (c, next) => {
   const user = c.get('user');
   
-  if (user) {
-    // If we have a user from the cookie or session, proceed
-    await next();
-    return;
+  if (!user) {
+    return c.json({ 
+      error: 'Unauthorized', 
+      message: 'Authentication required' 
+    }, 401);
   }
   
-  // Otherwise, check for token-based authentication
-  const authHeader = c.req.header('Authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    
-    try {
-      // Find session by token
-      const sessionResult = await c.env.DB.prepare(
-        "SELECT * FROM session WHERE token = ?"
-      ).bind(token).first();
-      
-      if (!sessionResult) {
-        return c.json({ 
-          error: 'Unauthorized', 
-          message: 'Invalid token' 
-        }, 401);
-      }
-      
-      // Get user from session
-      const userResult = await c.env.DB.prepare(
-        "SELECT * FROM user WHERE id = ?"
-      ).bind(sessionResult.user_id).first();
-      
-      if (!userResult) {
-        return c.json({ 
-          error: 'Unauthorized', 
-          message: 'User not found' 
-        }, 401);
-      }
-      
-      // Set the user and session in the context for the duration of this request
-      c.set('user', userResult);
-      c.set('session', sessionResult);
-      
-      // Proceed to the route handler
-      await next();
-      return;
-    } catch (error) {
-      console.error('Error validating token:', error);
-      return c.json({ 
-        error: 'Unauthorized', 
-        message: 'Error validating token' 
-      }, 401);
-    }
-  }
-  
-  // If we get here, no valid authentication was found
-  return c.json({ 
-    error: 'Unauthorized', 
-    message: 'Authentication required' 
-  }, 401);
+  await next();
 };
 
 /**
  * Middleware to check for specific roles or permissions
  * @param roles Array of role names required to access the route
  */
-export const roleMiddleware = (roles: string[]): MiddlewareHandler => {
+export const roleMiddleware = (roles: string[]): MiddlewareHandler<HonoContext> => {
   return async (c, next) => {
     // Check if we already have a user from the auth middleware
     const user = c.get('user');

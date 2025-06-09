@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import * as authSchema from '../../src/db/auth-schema';
 import { drizzle } from 'drizzle-orm/d1';
 import { getApiUrl, getFrontendUrl, getAuthCallbackUrl } from './config';
@@ -8,6 +8,7 @@ import { getApiUrl, getFrontendUrl, getAuthCallbackUrl } from './config';
 // Import Env type from the correct location
 type Env = {
   DB: D1Database; 
+  SESSIONS_KV: KVNamespace;
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -104,17 +105,62 @@ export const createAuth = (env: Env) => {
       expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
       updateAge: 60 * 60 * 24, // Update session every 24 hours
       strategy: "jwt", // Use JWT tokens for sessions
+      storeSessionInDatabase: false, // This is crucial for using secondaryStorage for sessions
     },
     // Use drizzleAdapter with the initialized db instance
     database: drizzleAdapter(db, {
       provider: "sqlite",
       schema: {
         user: authSchema.user,
-        session: authSchema.session,
         account: authSchema.account,
         verification: authSchema.verification
       }
     }),
+    // Configure KV as secondary storage for sessions.
+    // This implementation adheres to Better Auth's SecondaryStorage interface.
+    secondaryStorage: {
+      get: async (key: string): Promise<string | null> => {
+        // Must return a string or null, so we don't use the "json" type here.
+        // Better Auth will handle parsing.
+        return await env.SESSIONS_KV.get(key);
+      },
+      set: async (key: string, value: string, ttl?: number) => {
+        const options = ttl ? { expirationTtl: ttl } : undefined;
+        // The `value` is already a stringified JSON from Better Auth.
+        await env.SESSIONS_KV.put(key, value, options);
+        
+        // Add user-to-session mapping for session listing
+        try {
+          const sessionData = JSON.parse(value) as { userId: string, id: string };
+          if (sessionData.userId && sessionData.id) {
+            const userSessionKey = `user:${sessionData.userId}:session:${sessionData.id}`;
+            await env.SESSIONS_KV.put(userSessionKey, key, options); // Store the session token (key)
+          }
+        } catch (e) {
+            console.error("Failed to create user-session mapping in KV", e);
+        }
+      },
+      delete: async (key: string) => { // key is the session token
+        // To delete the user-session mapping, we first need to read the session data
+        const sessionValue = await env.SESSIONS_KV.get(key);
+        
+        // Delete the main session entry
+        await env.SESSIONS_KV.delete(key);
+        
+        // If we found the session, delete the corresponding user-session mapping
+        if (sessionValue) {
+            try {
+                const sessionData = JSON.parse(sessionValue) as { userId: string, id: string };
+                if (sessionData.userId && sessionData.id) {
+                    const userSessionKey = `user:${sessionData.userId}:session:${sessionData.id}`;
+                    await env.SESSIONS_KV.delete(userSessionKey);
+                }
+            } catch (e) {
+                console.error("Failed to delete user-session mapping from KV", e);
+            }
+        }
+      }
+    },
     emailAndPassword: {
       enabled: true,
       // Add custom password settings with optimized hashing cost

@@ -148,6 +148,7 @@ function CanvasRoomPage() {
                           Loading room data...
                         </p>}>
           <CanvasComponent 
+            // @ts-ignore
             key={roomId()}
             roomId={roomId()}
             events={receivedEvents()}

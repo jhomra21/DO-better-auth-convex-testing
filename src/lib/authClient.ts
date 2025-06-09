@@ -294,63 +294,36 @@ export async function enhancedSignup(email: string, password: string, name: stri
     }
 }
 
-// Enhanced logout function
-export async function enhancedLogout(): Promise<any> {
-    try {        
-        // Get the current token
-        const token = localStorage.getItem('bearer_token');
+// Enhanced logout function that clears the token and handles server-side revocation
+export async function enhancedLogout(): Promise<{ error: any | null }> {
+    const apiUrl = getApiUrl();
+    const token = getToken();
+    
+    // Always clear the local token, even if server-side revocation fails
+    clearAuthToken();
+    
+    try {
+        // Call Better Auth's sign-out endpoint to revoke the session on the server
+        const response = await fetch(`${apiUrl}/api/auth/sign-out`, {
+            method: 'POST', // Better Auth sign-out is typically a POST
+            headers: {
+                'Content-Type': 'application/json',
+                // Include the token for the server to identify and revoke the session
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
         
-        if (!token) {
-            // If no token, just clear local state
-            clearAuthToken();
-            return { success: true };
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to revoke session on server' }));
+            console.error("Logout error:", errorData);
+            return { error: errorData };
         }
         
-        // First try to directly delete the session from the database
-        try {
-            const apiUrl = getApiUrl();
-            const response = await fetch(`${apiUrl}/api/protected/sessions/current`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                credentials: 'include'
-            });
-            
-            if (response.ok) {
-                // If direct session deletion was successful, clear local state
-                clearAuthToken();
-                return { success: true };
-            }
-        } catch (directDeleteError) {
-            // If direct deletion fails, continue with standard sign-out
-            console.error('Direct session deletion failed, trying standard sign-out');
-        }
-        
-        // Use Better Auth's standard signOut method as fallback
-        try {
-            await authClient.signOut({
-                fetchOptions: {
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
-                }
-            });
-        } catch (authError) {
-            // Even if Better Auth sign-out fails, we should still clear local state
-            console.error('Better Auth sign-out error, clearing local state anyway');
-        }
-        
-        // Always clear the local token regardless of API success
-        clearAuthToken();
-        return { success: true };
+        return { error: null };
     } catch (error) {
-        // Clear token even if there's an error
-        clearAuthToken();
-        return { error };
+        console.error("Error during logout:", error);
+        return { error: { message: error instanceof Error ? error.message : "Unknown error during logout" } };
     }
 }
 

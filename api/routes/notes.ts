@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { getUserNotesDatabaseStub } from '../lib/durableObjects';
+import { authMiddleware } from '../lib/authMiddleware';
 
 // Define environment type matching api/index.ts
 type Env = {
   USER_NOTES_DATABASE: DurableObjectNamespace;
+  CANVAS_ROOM: DurableObjectNamespace;
   DB: any; // D1 database for auth
   [key: string]: any;
 };
@@ -17,52 +19,13 @@ interface User {
 // Define Hono variables
 interface Variables {
   user: User;
+  session?: any;
+  auth: any;
 }
 
 // Create Hono app with proper types
 export const notesRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
-  .use('*', async (c, next) => {
-    // First check if user is already set from cookie auth
-    let user = c.get('user') as User | null;
-    
-    if (!user) {
-      // If no user in context, try to get it from the Authorization header
-      const authHeader = c.req.header('Authorization');
-      
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        
-        try {
-          // Find session by token
-          const sessionResult = await c.env.DB.prepare(
-            "SELECT * FROM session WHERE token = ?"
-          ).bind(token).first();
-          
-          if (sessionResult) {
-            // Get user from session
-            const userResult = await c.env.DB.prepare(
-              "SELECT * FROM user WHERE id = ?"
-            ).bind(sessionResult.user_id).first();
-            
-            if (userResult) {
-              // Set the user so it's available in the next handlers
-              user = userResult;
-              c.set('user', userResult);
-            }
-          }
-        } catch (error) {
-          console.error('Error validating token:', error);
-        }
-      }
-    }
-    
-    // Check if we have a valid user from either cookie or token auth
-    if (!user) {
-      return c.json({ error: 'Unauthorized' }, 401 as const);
-    }
-    
-    await next();
-  })
+  .use('*', authMiddleware)
 
   // Get all notes for authenticated user
   .get('/', async (c) => {
@@ -204,30 +167,30 @@ export const notesRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
 // WebSocket endpoint for real-time updates
 export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
   .use('*', async (c, next) => {
-    // First check if user is already set from cookie auth
     let user = c.get('user') as User | null;
-    
+
     if (!user) {
-      // If no user in context, try to get it from the Authorization header or query param
-      const authHeader = c.req.header('Authorization');
-      const tokenParam = new URL(c.req.url).searchParams.get('token');
-      
-      // First try Authorization header
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        user = await getUserFromToken(c, token);
-      } 
-      // Then try query parameter token (useful for WebSocket connections)
-      else if (tokenParam) {
-        user = await getUserFromToken(c, tokenParam);
-      }
-      
-      // Set the user if we found one
-      if (user) {
-        c.set('user', user);
+      // For WebSockets, token can be in Authorization header (less common) or query param
+      const auth = c.get('auth'); // from global middleware
+      const token = c.req.header('Authorization')?.split(' ')[1] ?? c.req.query('token');
+
+      if (token && auth) {
+        // We create a new pseudo-request with an Authorization header to validate the token
+        const pseudoRequest = new Request(c.req.url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        // Use the auth instance from context to validate
+        const sessionData = await auth.api.getSession({ headers: pseudoRequest.headers });
+
+        if (sessionData?.user) {
+            user = sessionData.user as User;
+            c.set('user', user);
+            c.set('session', sessionData.session);
+        }
       }
     }
-    
+
     // Check if we have a valid user from either cookie or token auth
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401 as const);
@@ -255,32 +218,4 @@ export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variabl
       console.error('Error establishing WebSocket connection:', error);
       return c.json({ error: 'Failed to establish WebSocket connection' }, 500 as const);
     }
-  });
-
-// Helper function to get user from token
-async function getUserFromToken(c: any, token: string): Promise<User | null> {
-  try {
-    // Find session by token
-    const sessionResult = await c.env.DB.prepare(
-      "SELECT * FROM session WHERE token = ?"
-    ).bind(token).first();
-    
-    if (!sessionResult) {
-      return null;
-    }
-    
-    // Get user from session
-    const userResult = await c.env.DB.prepare(
-      "SELECT * FROM user WHERE id = ?"
-    ).bind(sessionResult.user_id).first();
-    
-    if (!userResult) {
-      return null;
-    }
-    
-    return userResult as User;
-  } catch (error) {
-    console.error('Error validating token:', error);
-    return null;
-  }
-} 
+  }); 

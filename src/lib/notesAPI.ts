@@ -494,7 +494,8 @@ class NotesAPI {
     const response = await fetch(url.toString(), {
       headers: this.getHeaders(),
       // Use no-cache when forcing refresh
-      cache: forceRefresh ? 'no-cache' : 'default'
+      cache: forceRefresh ? 'no-cache' : 'default',
+      credentials: 'include'
     });
     
     if (!response.ok) {
@@ -635,6 +636,7 @@ class NotesAPI {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify({ text }),
+      credentials: 'include'
     });
     
     if (!response.ok) {
@@ -650,6 +652,7 @@ class NotesAPI {
       method: 'PATCH',
       headers: this.getHeaders(),
       body: JSON.stringify({ text }),
+      credentials: 'include'
     });
     
     if (!response.ok) {
@@ -664,6 +667,7 @@ class NotesAPI {
     const response = await fetch(`${getApiUrl()}/api/notes/${id}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
+      credentials: 'include'
     });
     
     if (!response.ok) {

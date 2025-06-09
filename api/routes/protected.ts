@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { authMiddleware, roleMiddleware } from '../lib/authMiddleware';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 
 // Define environment type for protected routes
 type Env = {
   DB: D1Database;
+  SESSIONS_KV: KVNamespace;
   // Add other environment variables as needed
 };
 
@@ -111,20 +112,34 @@ protectedRoutes.get('/admin/users', roleMiddleware(['admin']), async (c) => {
   }
 });
 
-// Endpoint to get user's sessions
+// Endpoint to get user's sessions from KV
 protectedRoutes.get('/sessions', async (c) => {
-  const user = c.get('user');  
-  
+  const user = c.get('user');
+  if (!user?.id) {
+    return c.json({ success: false, message: 'User not authenticated' }, 401);
+  }
+
   try {
-    const sessions = await c.env.DB.prepare(
-      `SELECT * FROM session WHERE user_id = ?`
-    ).bind(user.id).all();
-    
+    const listResult = await c.env.SESSIONS_KV.list({ prefix: `user:${user.id}:session:` });
+
+    const sessionPromises = listResult.keys.map(async (key: { name: string }) => {
+      const token = await c.env.SESSIONS_KV.get(key.name);
+      if (!token) return null;
+      const sessionDataString = await c.env.SESSIONS_KV.get(token);
+      if (!sessionDataString) return null;
+      // We can parse and return the full session object
+      return JSON.parse(sessionDataString);
+    });
+
+    const sessions = (await Promise.all(sessionPromises)).filter(Boolean);
+
     return c.json({
       success: true,
-      sessions: sessions.results
+      sessions: sessions
     });
+
   } catch (error) {
+    console.error('Failed to fetch sessions from KV:', error);
     return c.json({
       success: false,
       message: 'Failed to fetch sessions'
@@ -132,121 +147,58 @@ protectedRoutes.get('/sessions', async (c) => {
   }
 });
 
-// Endpoint to revoke the current session (for sign-out)
-protectedRoutes.delete('/sessions/current', async (c) => {
-  const user = c.get('user');
-  const currentSession = c.get('session');
-  
-  if (!currentSession?.id) {
-    return c.json({
-      success: false,
-      message: 'No current session found'
-    }, 400);
-  }
-  
-  try {
-    // Delete the current session
-    await c.env.DB.prepare(
-      `DELETE FROM session WHERE id = ?`
-    ).bind(currentSession.id).run();
-    
-    return c.json({
-      success: true,
-      message: 'Current session revoked successfully'
-    });
-  } catch (error) {
-    return c.json({
-      success: false,
-      message: 'Failed to revoke current session'
-    }, 500);
-  }
-});
+// Endpoint to revoke a specific session from KV
+protectedRoutes.delete('/sessions/:sessionId', async (c) => {
+    const user = c.get('user');
+    const { sessionId } = c.req.param();
+    const currentSession = c.get('session');
 
-// Endpoint to revoke a specific session
-protectedRoutes.delete('/sessions/:id', async (c) => {
-  const user = c.get('user');
-  const sessionId = c.req.param('id');
-  const currentSession = c.get('session');
-  
-  // Don't allow revoking the current session through this endpoint
-  if (sessionId === currentSession?.id) {
-    return c.json({
-      success: false,
-      message: 'Use /sessions/current to revoke current session'
-    }, 400);
-  }
-  
-  try {
-    // First verify the session belongs to the user
-    const sessionCheck = await c.env.DB.prepare(
-      `SELECT * FROM session WHERE id = ? AND user_id = ?`
-    ).bind(sessionId, user.id).first();
-    
-    if (!sessionCheck) {
-      return c.json({
-        success: false,
-        message: 'Session not found or does not belong to user'
-      }, 404);
+    if (!user?.id) {
+        return c.json({ success: false, message: 'User not authenticated' }, 401);
     }
     
-    // Delete the session
-    await c.env.DB.prepare(
-      `DELETE FROM session WHERE id = ?`
-    ).bind(sessionId).run();
-    
-    return c.json({
-      success: true,
-      message: 'Session revoked successfully'
-    });
-  } catch (error) {
-    return c.json({
-      success: false,
-      message: 'Failed to revoke session'
-    }, 500);
-  }
-});
+    // Better Auth session object is nested. Let's get the actual session id.
+    const currentSessionId = currentSession?.session?.id;
 
-// Debug endpoint to check token validation
-protectedRoutes.get('/debug-token', async (c) => {
-  const user = c.get('user');
-  const session = c.get('session');
-  const authHeader = c.req.header('Authorization');
-  
-  // Check token directly from the database if provided in header
-  let dbLookupResult = null;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
+    // Prevent revoking the current session via this endpoint.
+    // The user should use the main sign-out button for that.
+    if (sessionId === currentSessionId) {
+        return c.json({
+            success: false,
+            message: 'Cannot revoke the current session. Please use the main sign-out button.'
+        }, 400);
+    }
+
     try {
-      const dbSession = await c.env.DB.prepare(
-        "SELECT * FROM session WHERE token = ?"
-      ).bind(token).first();
-      
-      if (dbSession) {
-        dbLookupResult = {
-          found: true,
-          session_id: dbSession.id,
-          user_id: dbSession.user_id,
-          expires_at: dbSession.expires_at
-        };
-      } else {
-        dbLookupResult = { found: false, message: 'Token not found in database' };
-      }
+        const userSessionKey = `user:${user.id}:session:${sessionId}`;
+        
+        // Get the token associated with the session ID
+        const token = await c.env.SESSIONS_KV.get(userSessionKey);
+
+        if (!token) {
+            return c.json({
+                success: false,
+                message: 'Session not found or you do not have permission to revoke it.'
+            }, 404);
+        }
+
+        // Delete the user-to-session mapping
+        await c.env.SESSIONS_KV.delete(userSessionKey);
+        // Delete the main session entry using the token
+        await c.env.SESSIONS_KV.delete(token);
+
+        return c.json({
+            success: true,
+            message: 'Session revoked successfully'
+        });
+
     } catch (error) {
-      dbLookupResult = { found: false, error: String(error) };
+        console.error('Failed to revoke session from KV:', error);
+        return c.json({
+            success: false,
+            message: 'Failed to revoke session'
+        }, 500);
     }
-  }
-  
-  return c.json({
-    success: true,
-    middleware: {
-      hasUser: !!user,
-      hasSession: !!session,
-      user: user ? { id: user.id, email: user.email } : null,
-      session: session ? { id: session.id, expires_at: session.expires_at } : null
-    },
-    auth_header: authHeader,
-    db_lookup: dbLookupResult
-  });
 });
 
 export default protectedRoutes; 
