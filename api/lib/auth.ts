@@ -219,7 +219,8 @@ export const createAuth = (env: Env) => {
         // Configure cookies for cross-domain use
         sameSite: "none" as const,
         secure: true,
-        partitioned: true // For browser compatibility with new standards
+        // Remove partitioned attribute as it's not widely supported on mobile
+        // partitioned: true
       },
       // Add any additional configuration as needed
       cookies: {
@@ -227,14 +228,16 @@ export const createAuth = (env: Env) => {
           attributes: {
             sameSite: "none" as const,
             secure: true,
-            partitioned: true
+            // Remove partitioned attribute
+            // partitioned: true
           }
         },
         csrfToken: {
           attributes: {
             sameSite: "none" as const,
             secure: true,
-            partitioned: true
+            // Remove partitioned attribute
+            // partitioned: true
           }
         }
       },

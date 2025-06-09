@@ -1,4 +1,4 @@
-import { createSignal, type Component, createEffect, createMemo } from 'solid-js';
+import { createSignal, type Component, createEffect, createMemo, onMount } from 'solid-js';
 import { useRouter, Link } from '@tanstack/solid-router';
 import { useAuthContext, GlobalAuth } from '../lib/AuthProvider'; // Import GlobalAuth
 import { createFileRoute } from '@tanstack/solid-router'; // Added import
@@ -14,9 +14,17 @@ const SignInComponent: Component = () => {
   const [isLoading, setIsLoading] = createSignal(false);
   const [loginSuccess, setLoginSuccess] = createSignal(false);
   const [navigating, setNavigating] = createSignal(false);
+  const [isMobile, setIsMobile] = createSignal(false);
   
   const router = useRouter(); // Added router
   const auth = useAuthContext(); // Get auth context
+  
+  // Detect if user is on a mobile device
+  onMount(() => {
+    const mobileCheck = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    setIsMobile(mobileCheck);
+    console.log(`Device detected: ${mobileCheck ? 'Mobile' : 'Desktop'}`);
+  });
   
   // Create a derived state for authentication status
   const isAuthenticated = createMemo(() => 
@@ -30,6 +38,8 @@ const SignInComponent: Component = () => {
     const isAuthStatus = isAuthenticated();
     const isNavigating = navigating();
     
+    console.log(`Auth state check: success=${hasLoginSuccess}, authenticated=${isAuthStatus}, navigating=${isNavigating}`);
+    
     // Only proceed if login was successful, we're authenticated, and not already navigating
     if (hasLoginSuccess && isAuthStatus && !isNavigating) {
       setNavigating(true);
@@ -42,8 +52,18 @@ const SignInComponent: Component = () => {
   // Extract navigation logic to a reusable function
   const navigateToDashboard = () => {
     try {
-      // Try using router navigation first
+      console.log("Attempting navigation to dashboard");
+      
+      // For mobile devices, use direct navigation which is more reliable
+      if (isMobile()) {
+        console.log("Using direct navigation for mobile device");
+        window.location.href = "/dashboard";
+        return;
+      }
+      
+      // Try using router navigation first for desktop
       router.navigate({ to: "/dashboard" });
+      console.log("Router navigation initiated");
     } catch (e) {
       console.error("Router navigation failed, falling back to window.location", e);
       // Fallback to direct navigation if router fails
@@ -56,6 +76,8 @@ const SignInComponent: Component = () => {
     setIsLoading(true);
     setError('');
     
+    console.log(`Attempting login for email: ${email().substring(0, 3)}...`);
+    
     try {
       const result = await auth.login(email(), password());
       
@@ -64,12 +86,16 @@ const SignInComponent: Component = () => {
         setError(result.error.message || 'Failed to sign in');
       } else {
         // Login was successful
+        console.log("Login successful, setting success state");
         setLoginSuccess(true);
         
         // If already authenticated, navigate immediately
         // Otherwise, the createEffect will handle it when auth state updates
         if (isAuthenticated()) {
+          console.log("Already authenticated, navigating immediately");
           navigateToDashboard();
+        } else {
+          console.log("Waiting for auth state update before navigation");
         }
       }
     } catch (err: any) {
