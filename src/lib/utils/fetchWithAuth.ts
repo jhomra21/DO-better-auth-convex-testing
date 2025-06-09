@@ -17,6 +17,6 @@ export const fetchWithAuth = async (url: string, options?: RequestInit) => {
   //   console.warn('[fetchWithAuth] No token found in localStorage for key "bearer_token"');
   // }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers , credentials: 'include'});
   return response;
 }; 

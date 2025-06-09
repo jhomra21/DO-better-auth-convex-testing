@@ -22,6 +22,7 @@ type Env = {
     NODE_ENV?: string; // Add NODE_ENV as an optional string property
     USER_NOTES_DATABASE: DurableObjectNamespace;
     CANVAS_ROOM: DurableObjectNamespace; // Added for CanvasRoom DO
+    SESSIONS_KV: KVNamespace;
     // Add other bindings/variables like GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET if using social providers
     // GITHUB_CLIENT_ID?: string;
     // GITHUB_CLIENT_SECRET?: string;
@@ -90,33 +91,34 @@ app.use('*', async (c, next) => {
       const token = authHeader.substring(7);
       console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
       try {
-        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
-        const sessionResult = await c.env.DB.prepare(
-          "SELECT * FROM session WHERE token = ?"
-        ).bind(token).first<any>();
-        
-        if (sessionResult) {
-          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
-          if (sessionResult.user_id) {
-            const userResult = await c.env.DB.prepare(
-              "SELECT * FROM user WHERE id = ?"
-            ).bind(sessionResult.user_id).first<any>();
-            
-            if (userResult) {
-              user = userResult;
-              session = sessionResult; 
-              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
+        console.log('[AUTH_MIDDLEWARE] Attempting to find session in KV with token.');
+        const sessionValue = await c.env.SESSIONS_KV.get(token);
+
+        if (sessionValue) {
+          const sessionData = JSON.parse(sessionValue);
+          // The object from better-auth should have user and session properties.
+          if (sessionData.session && sessionData.user) {
+            // The expires_at from better-auth is a Date object or timestamp.
+            // When stringified it becomes an ISO string.
+            const expiresAt = new Date(sessionData.session.expires_at).getTime();
+            if (expiresAt > Date.now()) {
+              user = sessionData.user;
+              session = sessionData.session;
+              console.log('[AUTH_MIDDLEWARE] User and session found via Bearer token from KV:', user?.id);
             } else {
-              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
+              console.log('[AUTH_MIDDLEWARE] Session from KV is expired.');
+              // The session is expired, we can delete it from KV.
+              // better-auth should handle D1 deletion on its own schedule.
+              await c.env.SESSIONS_KV.delete(token);
             }
           } else {
-            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
+            console.log('[AUTH_MIDDLEWARE] Session from KV has unexpected structure.');
           }
         } else {
-          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
+          console.log('[AUTH_MIDDLEWARE] No session found in KV for Bearer token.');
         }
-      } catch (dbError) {
-        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
+      } catch (e) {
+        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token from KV:', e);
       }
     } else {
       console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
@@ -226,57 +228,12 @@ app.get('/session', async (c) => {
   const user = c.get('user');
   const session = c.get('session');
   
-  // Debug logging
-  
-  
-  // Check if we have a user from context (cookie-based auth)
   if (user) {
     return c.json({
       authenticated: true,
       user,
       session
     });
-  }
-  
-  // If no user in context, try to get it from the Authorization header
-  const authHeader = c.req.header('Authorization');
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
-    
-    try {
-      // Find session by token
-      const sessionResult = await c.env.DB.prepare(
-        "SELECT * FROM session WHERE token = ?"
-      ).bind(token).first();
-      
-      if (!sessionResult) {
-        return c.json({
-          authenticated: false,
-          message: 'Invalid token'
-        });
-      }
-      
-      // Get user from session
-      const userResult = await c.env.DB.prepare(
-          "SELECT * FROM user WHERE id = ?"
-      ).bind(sessionResult.user_id).first();
-        
-      if (!userResult) {
-        return c.json({
-          authenticated: false,
-          message: 'User not found'
-        });
-      }
-      
-      return c.json({
-        authenticated: true,
-        user: userResult,
-        session: sessionResult
-      });
-    } catch (error) {
-      console.error('Error getting session by token:', error);
-    }
   }
   
   // No valid authentication
