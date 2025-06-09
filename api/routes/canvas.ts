@@ -7,7 +7,6 @@ import {
   getAllCanvasRoomsForUser as dbGetAllCanvasRoomsForUser // Assuming we'll create this
 } from '../db/canvas-operations';
 import type { CreateCanvasRoomData } from '../db/canvas-operations'; // Import the specific input type
-import { authMiddleware } from '../lib/authMiddleware';
 // We might not need getCanvasRoomStub here if these are purely D1 operations before a DO is involved for real-time.
 // import { getCanvasRoomStub } from '../lib/durableObjects'; 
 
@@ -29,7 +28,12 @@ interface HonoVariables {
 export const canvasRouter = new Hono<{ Bindings: Env; Variables: HonoVariables }>()
   // This middleware can be simplified or removed if the global auth middleware handles setting the user.
   // If specific canvas-level checks are needed later, they can be added here.
-  .use('*', authMiddleware)
+  .use('*', async (c, next) => {
+    // The global middleware in api/index.ts should have already attempted to set c.user
+    // console.log('User in canvasRouter middleware from c.get("user"):', c.get('user'));
+    // No need to call c.get('user') here unless performing canvas-specific logic based on it.
+    await next();
+  })
 
   // List all canvas rooms (e.g., created by the user or public)
   .get('/rooms', async (c) => {

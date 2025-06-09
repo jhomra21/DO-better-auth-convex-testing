@@ -16,7 +16,6 @@ type Env = {
 // Assuming authentication middleware will populate c.get('user')
 interface HonoVariables {
   user?: { id: string; [key: string]: any }; // Populated by auth middleware
-  session?: any; // Add session to be set in context
   auth?: any; // If your Better-Auth instance is set on context
   // Add other variables if used by middleware
 }
@@ -28,28 +27,29 @@ export const canvasWebSocketRouter = new Hono<{ Bindings: Env; Variables: HonoVa
     let user = c.get('user'); // Check if auth middleware already ran (e.g., global middleware)
 
     if (!user) {
-      // For WebSockets, token can be in Authorization header (less common) or query param
-      const auth = c.get('auth'); // from global middleware
-      const token = c.req.header('Authorization')?.split(' ')[1] ?? c.req.query('token');
+      const token = c.req.query('token'); // Standard way to pass token for WS
+      if (!token) {
+        return c.json({ error: 'Unauthorized', message: 'Auth token is required for WebSocket connection.' }, 401);
+      }
+      
+      // Validate the token (this is a simplified example, adapt your Better-Auth validation)
+      try {
+        // Assuming your Better-Auth instance might be on c.env or you have a helper
+        // This is a conceptual placeholder for token validation logic.
+        // You might need to call a D1 query to validate the session token, similar to your /session endpoint.
+        const sessionResult = await c.env.DB.prepare(
+          "SELECT u.* FROM session s JOIN user u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > ?"
+        ).bind(token, new Date()).first();
 
-      if (token && auth) {
-        // We create a new pseudo-request with an Authorization header to validate the token
-        const pseudoRequest = new Request(c.req.url, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        // Use the auth instance from context to validate
-        const sessionData = await auth.api.getSession({ headers: pseudoRequest.headers });
-
-        if (sessionData?.user) {
-            user = sessionData.user as { id: string; [key: string]: any; };
-            c.set('user', user);
-            c.set('session', sessionData.session);
+        if (sessionResult) {
+          user = sessionResult as { id: string; [key: string]: any };
+          c.set('user', user);
         } else {
-            return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
+          return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
         }
-      } else {
-          return c.json({ error: 'Unauthorized', message: 'Auth token is required for WebSocket connection.' }, 401);
+      } catch (e) {
+        console.error("WebSocket Auth Error:", e);
+        return c.json({ error: 'Unauthorized', message: 'Authentication error.' }, 401);
       }
     }
     await next();

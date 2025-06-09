@@ -1,0 +1,89 @@
+---
+description: Better-Auth Authentication Set Up (use for anything related to authentication)
+globs: 
+alwaysApply: false
+---
+# Our Better Auth Setup: A Comprehensive Guide
+
+This document provides a detailed explanation of our hybrid authentication system, designed to support both traditional web (cookie-based) and modern token-based clients (like mobile apps) across separate frontend and backend domains.
+
+## 1. High-Level Strategy: A Hybrid Approach
+
+Our authentication system is built on a hybrid model to offer maximum flexibility:
+
+1.  **Cookie-Based Authentication**: Primarily for web browser sessions. `better-auth` on the server handles the creation of a secure, HTTP-only cookie.
+2.  **Token-Based Authentication**: For mobile clients or for our web app after the initial login. The client stores a session token and sends it in the `Authorization: Bearer <token>` header with each API request.
+
+This dual strategy is managed by a central middleware on our Hono backend, ensuring that any protected resource can be accessed securely, regardless of the client type.
+
+## 2. Server-Side Implementation (`api/`)
+
+Our Hono backend orchestrates the entire authentication process.
+
+### 2.1. Core Configuration (`api/lib/auth.ts`)
+
+The `better-auth` instance is configured with several key settings that are critical for our cross-domain environment:
+
+-   **Drizzle Adapter**: We use `drizzleAdapter` to connect `better-auth` directly to our D1 database, allowing it to manage `user`, `session`, and `account` tables seamlessly.
+-   **Cross-Domain Cookies**: To allow our frontend at `*.pages.dev` to authenticate with our backend at `*.workers.dev`, we configure cookies with specific attributes:
+    -   `sameSite: "none"`: Allows cookies to be sent in cross-origin requests.
+    -   `secure: true`: A security requirement for `SameSite=None`, ensuring cookies are only sent over HTTPS.
+    -   `partitioned: true`: A newer standard (CHIPS) that partitions cookies per top-level site, enhancing privacy and compatibility with modern browsers.
+-   **Optimized Password Hashing**: We provide a custom password hashing implementation that uses a lower `scrypt` cost factor. This is a crucial performance optimization for the Cloudflare Workers environment, preventing CPU time limit errors during intensive hashing operations.
+-   **Redirect Configuration**: All redirect URLs (`signIn`, `signUp`, `error`, `oauth`, `callback`) are explicitly configured to point back to our frontend application. This is especially important for the OAuth flow.
+
+### 2.2. The Central Authentication Middleware (`api/index.ts`)
+
+A global middleware (`app.use('*', ...)`) runs on every single request to our API. It's responsible for identifying the user.
+
+1.  **Cookie Check**: It first attempts to find a user via a session cookie by calling `auth.api.getSession()`.
+2.  **Bearer Token Fallback**: If the cookie check fails, it looks for an `Authorization: Bearer <token>` header. If one is found, it validates the token by querying the `session` table in our D1 database.
+3.  **Context Injection**: The resulting user object (or `null`) is injected into the Hono request context via `c.set('user', user)`. This makes the user's authentication status globally available to all subsequent route handlers without needing to re-authenticate.
+
+### 2.3. The OAuth Callback Handler (`api/index.ts`)
+
+This is a clever workaround to solve a common cross-domain authentication problem. After a user authenticates with a third party like Google, they are redirected back to our API. The API can't reliably set a cookie for the frontend domain. So, we implement a "cross-domain hand-off":
+
+1.  The `better-auth` handler processes the callback from Google, creates the user and session in D1, and prepares a redirect response.
+2.  Our custom logic in `api/index.ts` intercepts this response.
+3.  It queries the D1 database for the most recently created session to find the new session token.
+4.  It then constructs a **new redirect response**, sending the user's browser to our frontend dashboard (`/dashboard`) with the session token attached as a URL query parameter (e.g., `.../dashboard?token=THE_TOKEN`).
+
+### 2.4. Route Protection
+
+-   **HTTP Routes (`api/routes/protected.ts`)**: API endpoints are protected by `authMiddleware`. This middleware is very simple: it just checks if `c.get('user')` exists. All the complex validation has already been handled by the global middleware.
+-   **WebSocket Routes (`api/routes/canvas-ws.ts` & `api/routes/notes.ts`)**: Since WebSockets can't use standard headers for the initial handshake, authentication is handled by passing the session token as a query parameter (e.g., `.../ws?token=...`). The WebSocket route handler validates this token against D1 before upgrading the connection.
+
+## 3. Client-Side Implementation (`src/`)
+
+Our SolidJS frontend features a custom, robust client-side implementation to manage authentication state.
+
+### 3.1. The `useAuth` Hook (`src/lib/useAuth.ts`)
+
+This is the central, reactive interface for authentication throughout the entire UI. All components that need to know the auth state or perform auth actions (login, logout) use this hook. It provides:
+-   Reactive state: `isAuthenticated()`, `isLoading()`, `user()`, `session()`
+-   Functions: `login()`, `signup()`, `logout()`, `loginWithGoogle()`
+
+### 3.2. Custom Auth Service (`src/lib/authClient.ts`)
+
+We built a custom auth service (instead of using a pre-packaged client) to get fine-grained control.
+
+-   **Token Persistence**: It uses `localStorage` to store the session token (`saveToken`, `getToken`, `clearAuthToken`), allowing the user's session to persist across browser restarts.
+-   **API Interaction**: It contains the `enhancedLogin`, `enhancedSignup`, and `enhancedLogout` functions that make the actual `fetch` calls to the `better-auth` endpoints on our server.
+-   **Authenticated Fetch**: The `apiFetch` function is a wrapper around the native `fetch`. It automatically retrieves the token from `localStorage` and attaches the `Authorization: Bearer <token>` header to every outgoing request.
+-   **OAuth Token Capture**: It includes the critical `handleTokenFromUrl` function. When the app loads, this function checks if a `token` is present in the URL (from our server-side OAuth redirect). If so, it saves the token to `localStorage` and cleans the URL, completing the login flow.
+
+
+### 3.3. TanStack Integration
+
+We use TanStack Router and Query to create a seamless and efficient user experience.
+
+-   **TanStack Router (The Gatekeeper)**:
+    -   `beforeLoad`: We use loaders like `protectedLoader` and `publicOnlyLoader` to protect routes. They check the auth state and redirect if necessary *before* a component is ever rendered.
+    -   `loader`: For protected routes, we use the loader to pre-fetch essential data (like a user profile) with `queryClient.ensureQueryData()`. This ensures the data is ready the moment the component renders, eliminating loading spinners.
+
+-   **TanStack Query (The State Manager)**:
+    -   All server data (profile, sessions, notes) is treated as server state and managed via `useQuery`. This gives us caching, background refetching, and stale-time invalidation.
+    -   `createMutation` is used for any action that changes data. Its `onSuccess` callback is used to call `queryClient.invalidateQueries()`, which automatically triggers a refetch of stale data and keeps the UI perfectly in sync with the backend.
+    -   On logout, `queryClient.clear()` is called to wipe the entire cache, a crucial step for security and preventing stale data from being shown to the next user.
+

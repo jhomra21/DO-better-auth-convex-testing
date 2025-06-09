@@ -7,15 +7,12 @@ import { createRoot } from 'solid-js';
 export const GlobalAuth = createRoot(() => {
   const [isAuthenticated, setIsAuthenticated] = createSignal(false);
   const [user, setUser] = createSignal<any>(null);
-  const [session, setSession] = createSignal<any>(null);
   
   return {
     isAuthenticated,
     setIsAuthenticated,
     user,
-    setUser,
-    session,
-    setSession
+    setUser
   };
 });
 
@@ -63,12 +60,10 @@ export const AuthProvider: Component<AuthProviderProps> = (props) => {
     const isAuthReady = auth.authReady();
     const isAuthenticated = auth.isAuthenticated();
     const userData = auth.user();
-    const sessionData = auth.session();
     
     // Update global auth state when local auth state changes
     GlobalAuth.setIsAuthenticated(isAuthenticated);
     GlobalAuth.setUser(userData);
-    GlobalAuth.setSession(sessionData);
     
     // Set initialized when auth is ready
     if (isAuthReady) {
