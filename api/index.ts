@@ -93,7 +93,7 @@ app.use('*', async (c, next) => {
       try {
         console.log('[AUTH_MIDDLEWARE] Attempting to find session in KV with token.');
         const sessionValue = await c.env.SESSIONS_KV.get(token);
-
+        
         if (sessionValue) {
           const sessionData = JSON.parse(sessionValue);
           // The object from better-auth should have user and session properties.

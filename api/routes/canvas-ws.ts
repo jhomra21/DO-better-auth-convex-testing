@@ -39,12 +39,12 @@ export const canvasWebSocketRouter = new Hono<{ Bindings: Env; Variables: HonoVa
           const sessionData = JSON.parse(sessionValue);
           if (sessionData.session && sessionData.user && new Date(sessionData.session.expires_at).getTime() > Date.now()) {
             user = sessionData.user;
-            c.set('user', user);
+          c.set('user', user);
           } else {
              return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
           }
         } else {
-           return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
+          return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
         }
       } catch (e) {
         console.error("WebSocket Auth Error:", e);

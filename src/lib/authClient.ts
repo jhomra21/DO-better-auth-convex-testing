@@ -99,10 +99,6 @@ export function setAuthToken(token: string): void {
 
 // Enhanced login function that ensures credentials are included
 export async function enhancedLogin(email: string, password: string): Promise<any> {
-    // Check if running on a mobile device
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    console.log(`Login attempt from ${isMobile ? 'mobile' : 'desktop'} device`);
-    
     try {
         const response = await fetch(`${getApiUrl()}/api/auth/sign-in/email`, {
             method: 'POST',
@@ -113,14 +109,11 @@ export async function enhancedLogin(email: string, password: string): Promise<an
             credentials: 'include' // Critical for cross-domain cookies
         });
         
-        console.log(`Login response status: ${response.status}`);
-        
         // Check for token header
         const authToken = response.headers.get("set-auth-token") || 
                           response.headers.get("Set-Auth-Token");
         
         if (authToken) {
-            console.log("Auth token received in headers");
             saveToken(authToken);
             
             // Get session data immediately after login to avoid additional requests
@@ -132,8 +125,6 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                     credentials: 'include'
                 });
                 
-                console.log(`Session response status: ${sessionResponse.status}`);
-                
                 if (sessionResponse.ok) {
                     const sessionData = await sessionResponse.json() as {
                         authenticated: boolean;
@@ -141,7 +132,6 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                         session: any;
                     };
                     if (sessionData.authenticated) {
-                        console.log("Successfully authenticated with session data");
                         return { 
                             error: null,
                             user: sessionData.user,
@@ -162,7 +152,6 @@ export async function enhancedLogin(email: string, password: string): Promise<an
             // Add type assertion
             const responseData = data as { token?: string, error?: any };
             if (responseData && responseData.token) {
-                console.log("Auth token received in response body");
                 saveToken(responseData.token);
                 
                 // Get session data immediately after login
@@ -174,8 +163,6 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                         credentials: 'include'
                     });
                     
-                    console.log(`Session response status: ${sessionResponse.status}`);
-                    
                     if (sessionResponse.ok) {
                         const sessionData = await sessionResponse.json() as {
                             authenticated: boolean;
@@ -183,7 +170,6 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                             session: any;
                         };
                         if (sessionData.authenticated) {
-                            console.log("Successfully authenticated with session data");
                             return { 
                                 error: null,
                                 user: sessionData.user,
@@ -198,10 +184,8 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                 
                 return { error: null };
             } else if (responseData && responseData.error) {
-                console.error("Login error from server:", responseData.error);
                 return { error: responseData.error };
             } else {
-                console.error("Login failed - no token received");
                 return { error: { message: "Login failed - no token received" } };
             }
         }
@@ -313,15 +297,15 @@ export async function enhancedSignup(email: string, password: string, name: stri
 // Enhanced logout function
 export async function enhancedLogout(): Promise<any> {
     let finalResponse = { success: false, message: 'Logout failed' };
-
+        
     try {
         // Call the main better-auth sign-out endpoint. This is the only call needed.
         // It will handle session invalidation in both D1 and the KV store.
         const signOutResponse = await fetch(`${getApiUrl()}/api/auth/sign-out`, {
             method: 'POST',
-            credentials: 'include'
-        });
-
+                credentials: 'include'
+            });
+            
         if (signOutResponse.ok) {
             finalResponse = { success: true, message: 'Signed out successfully' };
             console.log('Successfully signed out via main auth endpoint.');

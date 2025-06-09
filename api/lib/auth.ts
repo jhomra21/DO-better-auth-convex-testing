@@ -164,7 +164,7 @@ export const createAuth = (env: Env) => {
               const sessionId = sessionData.id || sessionData.session?.id;
               if (sessionId) {
                   const userSessionKey = `user:${userId}:session:${sessionId}`;
-                  await env.SESSIONS_KV.delete(userSessionKey);
+              await env.SESSIONS_KV.delete(userSessionKey);
                   console.log(`[KV-DELETE] Attempted to delete user-to-session key: ${userSessionKey}`);
               }
             } else {
@@ -218,26 +218,20 @@ export const createAuth = (env: Env) => {
       defaultCookieAttributes: {
         // Configure cookies for cross-domain use
         sameSite: "none" as const,
-        secure: true,
-        // Remove partitioned attribute as it's not widely supported on mobile
-        // partitioned: true
+        secure: true
       },
       // Add any additional configuration as needed
       cookies: {
         sessionToken: {
           attributes: {
             sameSite: "none" as const,
-            secure: true,
-            // Remove partitioned attribute
-            // partitioned: true
+            secure: true
           }
         },
         csrfToken: {
           attributes: {
             sameSite: "none" as const,
-            secure: true,
-            // Remove partitioned attribute
-            // partitioned: true
+            secure: true
           }
         }
       },

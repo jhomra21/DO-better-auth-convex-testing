@@ -182,7 +182,7 @@ export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variabl
         token = authHeader.substring(7);
       } else if (tokenParam) {
         token = tokenParam;
-      }
+      } 
 
       if (token) {
         try {
@@ -191,10 +191,10 @@ export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variabl
                 const sessionData = JSON.parse(sessionValue);
                 if (sessionData.session && sessionData.user && new Date(sessionData.session.expires_at).getTime() > Date.now()) {
                     user = sessionData.user;
-                    if (user) {
-                      c.set('user', user);
-                    }
-                }
+      if (user) {
+        c.set('user', user);
+      }
+    }
             }
         } catch (e) {
             console.error("Error validating token from KV for WebSocket:", e);
@@ -228,4 +228,4 @@ export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variabl
       console.error('Error establishing WebSocket connection:', error);
       return c.json({ error: 'Failed to establish WebSocket connection' }, 500 as const);
     }
-  }); 
+  });

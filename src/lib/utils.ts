@@ -11,9 +11,6 @@ export function cn(...inputs: ClassValue[]) {
  * In production, it uses the specific worker URL to ensure consistent cross-domain communication.
  */
 export function getApiUrl(): string {
-  // Check if running on a mobile device
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  
   if (import.meta.env.DEV) {
     // For local development, use the local wrangler dev server
     // Get protocol dynamically to support both http and https
