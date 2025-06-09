@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { createAuth } from './lib/auth';
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, DurableObjectNamespace } from '@cloudflare/workers-types';
 import protectedRoutes from './routes/protected';
 import { getFrontendUrl, getSignInErrorUrl } from './lib/config';
 import { notesRouter, notesWebSocketRouter } from './routes/notes';
@@ -29,13 +29,14 @@ type Env = {
 };
 
 // Define Variables for Hono context
-type HonoVariables = {
-    auth: ReturnType<typeof createAuth>; // Use ReturnType to get the instance type
-    user: any; // Or a more specific user type from BetterAuth
-    session: any; // Or a more specific session type from BetterAuth
+interface Variables {
+  auth: ReturnType<typeof createAuth>;
+  user: any;
+  session: any;
+  isMobile: boolean; // Add this property for mobile browser detection
 }
 
-const app = new Hono<{ Bindings: Env, Variables: HonoVariables }>()
+const app = new Hono<{ Bindings: Env, Variables: Variables }>()
 
 // CORS Configuration with enhanced header handling
 app.use('*', cors({
@@ -61,9 +62,24 @@ app.use('*', cors({
   credentials: true, 
 }));
 
+// Add middleware to detect mobile browsers
+app.use('*', async (c, next) => {
+  // Check for mobile browser using User-Agent or custom header
+  const userAgent = c.req.header('User-Agent') || '';
+  const isMobileHeader = c.req.header('X-Client-Type') === 'mobile';
+  const isMobile = isMobileHeader || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+  
+  // Store this information for other middleware
+  c.set('isMobile', isMobile);
+  console.log(`[CLIENT-DETECTION] Client type: ${isMobile ? 'mobile' : 'desktop'}`);
+  
+  await next();
+});
+
 // Initialize Better Auth middleware
 app.use('*', async (c, next) => {
-  const auth = createAuth(c.env);
+  const isMobile = c.get('isMobile') || false;
+  const auth = createAuth(c.env, { isMobile });
   c.set('auth', auth);
   
   let user: any = null;

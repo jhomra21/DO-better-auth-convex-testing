@@ -56,7 +56,7 @@ export function createBetterAuthHandler(auth: ReturnType<typeof betterAuth>) {
  * this optimization should help. Google Auth bypasses this issue since it doesn't 
  * require password hashing on your Worker.
  */
-export const createAuth = (env: Env) => {
+export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
 
@@ -64,6 +64,17 @@ export const createAuth = (env: Env) => {
   const apiUrl = getApiUrl(env);
   const frontendURL = getFrontendUrl(env);
   const authCallbackUrl = getAuthCallbackUrl(env);
+  
+  // Check if this is a mobile client
+  const isMobile = options?.isMobile || false;
+  
+  // Adjust cookie settings based on client type
+  const cookieSettings = {
+    sameSite: "none" as const,
+    secure: true,
+    // Mobile browsers may need different settings
+    // partitioned attribute has been removed as it causes issues
+  };
 
   const auth = betterAuth({
     projectId: 'convex-better-auth',
@@ -217,21 +228,18 @@ export const createAuth = (env: Env) => {
     advanced: {
       defaultCookieAttributes: {
         // Configure cookies for cross-domain use
-        sameSite: "none" as const,
-        secure: true
+        ...cookieSettings
       },
       // Add any additional configuration as needed
       cookies: {
         sessionToken: {
           attributes: {
-            sameSite: "none" as const,
-            secure: true
+            ...cookieSettings
           }
         },
         csrfToken: {
           attributes: {
-            sameSite: "none" as const,
-            secure: true
+            ...cookieSettings
           }
         }
       },
