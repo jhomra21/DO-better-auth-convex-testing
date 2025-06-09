@@ -5,8 +5,6 @@ import { getUserNotesDatabaseStub } from '../lib/durableObjects';
 type Env = {
   USER_NOTES_DATABASE: DurableObjectNamespace;
   DB: any; // D1 database for auth
-  CANVAS_ROOM: DurableObjectNamespace;
-  SESSIONS_KV: KVNamespace;
   [key: string]: any;
 };
 
@@ -24,10 +22,45 @@ interface Variables {
 // Create Hono app with proper types
 export const notesRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
   .use('*', async (c, next) => {
-    const user = c.get('user') as User | null;
+    // First check if user is already set from cookie auth
+    let user = c.get('user') as User | null;
+    
+    if (!user) {
+      // If no user in context, try to get it from the Authorization header
+      const authHeader = c.req.header('Authorization');
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        
+        try {
+          // Find session by token
+          const sessionResult = await c.env.DB.prepare(
+            "SELECT * FROM session WHERE token = ?"
+          ).bind(token).first();
+          
+          if (sessionResult) {
+            // Get user from session
+            const userResult = await c.env.DB.prepare(
+              "SELECT * FROM user WHERE id = ?"
+            ).bind(sessionResult.user_id).first();
+            
+            if (userResult) {
+              // Set the user so it's available in the next handlers
+              user = userResult;
+              c.set('user', userResult);
+            }
+          }
+        } catch (error) {
+          console.error('Error validating token:', error);
+        }
+      }
+    }
+    
+    // Check if we have a valid user from either cookie or token auth
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401 as const);
     }
+    
     await next();
   })
 
@@ -171,37 +204,31 @@ export const notesRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
 // WebSocket endpoint for real-time updates
 export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variables }>()
   .use('*', async (c, next) => {
+    // First check if user is already set from cookie auth
     let user = c.get('user') as User | null;
     
     if (!user) {
+      // If no user in context, try to get it from the Authorization header or query param
       const authHeader = c.req.header('Authorization');
-      const url = new URL(c.req.url);
-      const tokenParam = url.searchParams.get('token');
-      let token: string | null = null;
+      const tokenParam = new URL(c.req.url).searchParams.get('token');
+      
+      // First try Authorization header
       if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      } else if (tokenParam) {
-        token = tokenParam;
+        const token = authHeader.substring(7);
+        user = await getUserFromToken(c, token);
       } 
-
-      if (token) {
-        try {
-            const sessionValue = await c.env.SESSIONS_KV.get(token);
-            if(sessionValue) {
-                const sessionData = JSON.parse(sessionValue);
-                if (sessionData.session && sessionData.user && new Date(sessionData.session.expires_at).getTime() > Date.now()) {
-                    user = sessionData.user;
+      // Then try query parameter token (useful for WebSocket connections)
+      else if (tokenParam) {
+        user = await getUserFromToken(c, tokenParam);
+      }
+      
+      // Set the user if we found one
       if (user) {
         c.set('user', user);
       }
     }
-            }
-        } catch (e) {
-            console.error("Error validating token from KV for WebSocket:", e);
-        }
-      }
-    }
     
+    // Check if we have a valid user from either cookie or token auth
     if (!user) {
       return c.json({ error: 'Unauthorized' }, 401 as const);
     }
@@ -229,3 +256,31 @@ export const notesWebSocketRouter = new Hono<{ Bindings: Env, Variables: Variabl
       return c.json({ error: 'Failed to establish WebSocket connection' }, 500 as const);
     }
   });
+
+// Helper function to get user from token
+async function getUserFromToken(c: any, token: string): Promise<User | null> {
+  try {
+    // Find session by token
+    const sessionResult = await c.env.DB.prepare(
+      "SELECT * FROM session WHERE token = ?"
+    ).bind(token).first();
+    
+    if (!sessionResult) {
+      return null;
+    }
+    
+    // Get user from session
+    const userResult = await c.env.DB.prepare(
+      "SELECT * FROM user WHERE id = ?"
+    ).bind(sessionResult.user_id).first();
+    
+    if (!userResult) {
+      return null;
+    }
+    
+    return userResult as User;
+  } catch (error) {
+    console.error('Error validating token:', error);
+    return null;
+  }
+} 

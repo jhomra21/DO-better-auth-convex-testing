@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { createAuth } from './lib/auth';
-import type { D1Database, KVNamespace, DurableObjectNamespace } from '@cloudflare/workers-types';
+import type { D1Database } from '@cloudflare/workers-types';
 import protectedRoutes from './routes/protected';
 import { getFrontendUrl, getSignInErrorUrl } from './lib/config';
 import { notesRouter, notesWebSocketRouter } from './routes/notes';
@@ -22,21 +22,19 @@ type Env = {
     NODE_ENV?: string; // Add NODE_ENV as an optional string property
     USER_NOTES_DATABASE: DurableObjectNamespace;
     CANVAS_ROOM: DurableObjectNamespace; // Added for CanvasRoom DO
-    SESSIONS_KV: KVNamespace;
     // Add other bindings/variables like GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET if using social providers
     // GITHUB_CLIENT_ID?: string;
     // GITHUB_CLIENT_SECRET?: string;
 };
 
 // Define Variables for Hono context
-interface Variables {
-  auth: ReturnType<typeof createAuth>;
-  user: any;
-  session: any;
-  isMobile: boolean; // Add this property for mobile browser detection
+type HonoVariables = {
+    auth: ReturnType<typeof createAuth>; // Use ReturnType to get the instance type
+    user: any; // Or a more specific user type from BetterAuth
+    session: any; // Or a more specific session type from BetterAuth
 }
 
-const app = new Hono<{ Bindings: Env, Variables: Variables }>()
+const app = new Hono<{ Bindings: Env, Variables: HonoVariables }>()
 
 // CORS Configuration with enhanced header handling
 app.use('*', cors({
@@ -62,24 +60,9 @@ app.use('*', cors({
   credentials: true, 
 }));
 
-// Add middleware to detect mobile browsers
-app.use('*', async (c, next) => {
-  // Check for mobile browser using User-Agent or custom header
-  const userAgent = c.req.header('User-Agent') || '';
-  const isMobileHeader = c.req.header('X-Client-Type') === 'mobile';
-  const isMobile = isMobileHeader || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-  
-  // Store this information for other middleware
-  c.set('isMobile', isMobile);
-  console.log(`[CLIENT-DETECTION] Client type: ${isMobile ? 'mobile' : 'desktop'}`);
-  
-  await next();
-});
-
 // Initialize Better Auth middleware
 app.use('*', async (c, next) => {
-  const isMobile = c.get('isMobile') || false;
-  const auth = createAuth(c.env, { isMobile });
+  const auth = createAuth(c.env);
   c.set('auth', auth);
   
   let user: any = null;
@@ -107,34 +90,33 @@ app.use('*', async (c, next) => {
       const token = authHeader.substring(7);
       console.log('[AUTH_MIDDLEWARE] Bearer token found:', token ? '(token present)' : '(token NOT present/empty after substring)');
       try {
-        console.log('[AUTH_MIDDLEWARE] Attempting to find session in KV with token.');
-        const sessionValue = await c.env.SESSIONS_KV.get(token);
+        console.log('[AUTH_MIDDLEWARE] Attempting to find session in DB with token.');
+        const sessionResult = await c.env.DB.prepare(
+          "SELECT * FROM session WHERE token = ?"
+        ).bind(token).first<any>();
         
-        if (sessionValue) {
-          const sessionData = JSON.parse(sessionValue);
-          // The object from better-auth should have user and session properties.
-          if (sessionData.session && sessionData.user) {
-            // The expires_at from better-auth is a Date object or timestamp.
-            // When stringified it becomes an ISO string.
-            const expiresAt = new Date(sessionData.session.expires_at).getTime();
-            if (expiresAt > Date.now()) {
-              user = sessionData.user;
-              session = sessionData.session;
-              console.log('[AUTH_MIDDLEWARE] User and session found via Bearer token from KV:', user?.id);
+        if (sessionResult) {
+          console.log('[AUTH_MIDDLEWARE] Session found in DB for token:', sessionResult.id, 'User ID:', sessionResult.user_id);
+          if (sessionResult.user_id) {
+            const userResult = await c.env.DB.prepare(
+              "SELECT * FROM user WHERE id = ?"
+            ).bind(sessionResult.user_id).first<any>();
+            
+            if (userResult) {
+              user = userResult;
+              session = sessionResult; 
+              console.log('[AUTH_MIDDLEWARE] User found via Bearer token DB lookup:', user?.id);
             } else {
-              console.log('[AUTH_MIDDLEWARE] Session from KV is expired.');
-              // The session is expired, we can delete it from KV.
-              // better-auth should handle D1 deletion on its own schedule.
-              await c.env.SESSIONS_KV.delete(token);
+              console.log('[AUTH_MIDDLEWARE] User not found in DB for user_id from session:', sessionResult.user_id);
             }
           } else {
-            console.log('[AUTH_MIDDLEWARE] Session from KV has unexpected structure.');
+            console.log('[AUTH_MIDDLEWARE] No user_id in sessionResult from DB.');
           }
         } else {
-          console.log('[AUTH_MIDDLEWARE] No session found in KV for Bearer token.');
+          console.log('[AUTH_MIDDLEWARE] No session found in DB for Bearer token.');
         }
-      } catch (e) {
-        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token from KV:', e);
+      } catch (dbError) {
+        console.error('[AUTH_MIDDLEWARE] Error validating Bearer token against DB:', dbError);
       }
     } else {
       console.log('[AUTH_MIDDLEWARE] No Authorization header or not Bearer type.');
@@ -244,12 +226,57 @@ app.get('/session', async (c) => {
   const user = c.get('user');
   const session = c.get('session');
   
+  // Debug logging
+  
+  
+  // Check if we have a user from context (cookie-based auth)
   if (user) {
     return c.json({
       authenticated: true,
       user,
       session
     });
+  }
+  
+  // If no user in context, try to get it from the Authorization header
+  const authHeader = c.req.header('Authorization');
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    
+    try {
+      // Find session by token
+      const sessionResult = await c.env.DB.prepare(
+        "SELECT * FROM session WHERE token = ?"
+      ).bind(token).first();
+      
+      if (!sessionResult) {
+        return c.json({
+          authenticated: false,
+          message: 'Invalid token'
+        });
+      }
+      
+      // Get user from session
+      const userResult = await c.env.DB.prepare(
+          "SELECT * FROM user WHERE id = ?"
+      ).bind(sessionResult.user_id).first();
+        
+      if (!userResult) {
+        return c.json({
+          authenticated: false,
+          message: 'User not found'
+        });
+      }
+      
+      return c.json({
+        authenticated: true,
+        user: userResult,
+        session: sessionResult
+      });
+    } catch (error) {
+      console.error('Error getting session by token:', error);
+    }
   }
   
   // No valid authentication

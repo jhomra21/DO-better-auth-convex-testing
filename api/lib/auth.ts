@@ -1,14 +1,13 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database } from '@cloudflare/workers-types';
 import * as authSchema from '../../src/db/auth-schema';
 import { drizzle } from 'drizzle-orm/d1';
 import { getApiUrl, getFrontendUrl, getAuthCallbackUrl } from './config';
 
 // Import Env type from the correct location
 type Env = {
-  SESSIONS_KV: KVNamespace;
-  DB: D1Database;
+  DB: D1Database; 
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -26,17 +25,17 @@ export function createBetterAuthHandler(auth: ReturnType<typeof betterAuth>) {
       // If the error is about JSON parsing, just continue with empty body
       if (error instanceof SyntaxError && error.message.includes('JSON')) {
         console.log('Handling empty JSON body error');
-
+        
         // Create a new request with an empty JSON body
         const newRequest = new Request(request.url, {
           method: request.method,
           headers: request.headers,
           body: JSON.stringify({}),
         });
-
+        
         return await auth.handler(newRequest);
       }
-
+      
       // For other errors, rethrow
       throw error;
     }
@@ -56,33 +55,22 @@ export function createBetterAuthHandler(auth: ReturnType<typeof betterAuth>) {
  * this optimization should help. Google Auth bypasses this issue since it doesn't 
  * require password hashing on your Worker.
  */
-export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
+export const createAuth = (env: Env) => {
   // Create a drizzle instance with the D1 database
   const db = drizzle(env.DB, { schema: authSchema });
-
+  
   // Get API and frontend URLs from config helpers
   const apiUrl = getApiUrl(env);
   const frontendURL = getFrontendUrl(env);
   const authCallbackUrl = getAuthCallbackUrl(env);
-  
-  // Check if this is a mobile client
-  const isMobile = options?.isMobile || false;
-  
-  // Adjust cookie settings based on client type
-  const cookieSettings = {
-    sameSite: "none" as const,
-    secure: true,
-    // Mobile browsers may need different settings
-    // partitioned attribute has been removed as it causes issues
-  };
-
+    
   const auth = betterAuth({
     projectId: 'convex-better-auth',
     secretKey: env.BETTER_AUTH_SECRET,
     baseUrl: apiUrl, // API server URL
     socialProviders: {
       google: {
-        prompt: "select_account",
+        prompt: "select_account", 
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         redirectURI: authCallbackUrl
@@ -127,66 +115,6 @@ export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
         verification: authSchema.verification
       }
     }),
-    // Configure KV as secondary storage for sessions.
-
-
-    // This implementation adheres to Better Auth's SecondaryStorage interface.
-
-
-    secondaryStorage: {
-      get: async (key: string): Promise<string | null> => {
-        // Must return a string or null, so we don't use the "json" type here.
-        // Better Auth will handle parsing.
-        return await env.SESSIONS_KV.get(key);
-      },
-      set: async (key: string, value: string, ttl?: number) => {
-        const options = ttl ? { expirationTtl: ttl } : undefined;
-        // The `value` is already a stringified JSON from Better Auth.
-        await env.SESSIONS_KV.put(key, value, options);
-        // Add user-to-session mapping for session listing
-        try {
-          const sessionData = JSON.parse(value) as { userId: string, id: string };
-          if (sessionData.userId && sessionData.id) {
-            const userSessionKey = `user:${sessionData.userId}:session:${sessionData.id}`;
-            await env.SESSIONS_KV.put(userSessionKey, key, options); // Store the session token (key)
-          }
-        } catch (e) {
-          console.error("Failed to create user-session mapping in KV", e);
-        }
-      },
-      delete: async (key: string) => { // key is the session token
-        const sessionValue = await env.SESSIONS_KV.get(key);
-        await env.SESSIONS_KV.delete(key);
-
-        if (sessionValue) {
-          try {
-            const sessionData = JSON.parse(sessionValue);
-            // The session object from better-auth can have the userId in a couple of places.
-            // We'll check for the most common structures to ensure we find it.
-            const userId = sessionData.userId || sessionData.user?.id || sessionData.session?.user_id;
-
-            if (userId) {
-              // Now, also delete the `active-sessions-${userId}` key.
-              const activeSessionsKey = `active-sessions-${userId}`;
-              await env.SESSIONS_KV.delete(activeSessionsKey);
-              console.log(`[KV-DELETE] Attempted to delete active sessions key: ${activeSessionsKey}`);
-
-              // And also delete the user-to-session mapping if you are using it
-              const sessionId = sessionData.id || sessionData.session?.id;
-              if (sessionId) {
-                  const userSessionKey = `user:${userId}:session:${sessionId}`;
-              await env.SESSIONS_KV.delete(userSessionKey);
-                  console.log(`[KV-DELETE] Attempted to delete user-to-session key: ${userSessionKey}`);
-              }
-            } else {
-              console.warn("[KV-DELETE] Could not find userId in session data from KV", sessionData);
-            }
-          } catch (e) {
-            console.error("Failed to parse session or delete user-session mapping from KV", e);
-          }
-        }
-      }
-    },
     emailAndPassword: {
       enabled: true,
       // Add custom password settings with optimized hashing cost
@@ -219,8 +147,8 @@ export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
       }
     },
     trustedOrigins: [
-      'http://localhost:3000',
-      'http://localhost:4173',
+      'http://localhost:3000', 
+      'http://localhost:4173', 
       'http://localhost:5173',
       'https://convex-better-auth-testing.pages.dev',
       'https://better-auth-api-cross-origin.jhonra121.workers.dev'
@@ -228,18 +156,24 @@ export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
     advanced: {
       defaultCookieAttributes: {
         // Configure cookies for cross-domain use
-        ...cookieSettings
+        sameSite: "none" as const,
+        secure: true,
+        partitioned: true // For browser compatibility with new standards
       },
       // Add any additional configuration as needed
       cookies: {
         sessionToken: {
           attributes: {
-            ...cookieSettings
+            sameSite: "none" as const,
+            secure: true,
+            partitioned: true
           }
         },
         csrfToken: {
           attributes: {
-            ...cookieSettings
+            sameSite: "none" as const,
+            secure: true,
+            partitioned: true
           }
         }
       },
@@ -273,10 +207,10 @@ export const createAuth = (env: Env, options?: { isMobile?: boolean }) => {
       }
     }
   });
-
+  
   // Add a wrapped handler that deals with empty bodies
   const wrappedHandler = createBetterAuthHandler(auth);
-
+  
   // Return the auth instance with wrapped handler
   return {
     ...auth,

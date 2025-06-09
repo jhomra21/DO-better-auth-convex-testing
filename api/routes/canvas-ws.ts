@@ -9,7 +9,6 @@ type Env = {
   // Include your Better-Auth specific env vars if auth middleware needs them directly
   // BETTER_AUTH_SECRET: string;
   // BETTER_AUTH_URL: string;
-  SESSIONS_KV: KVNamespace; // KV binding for session storage
   [key: string]: any;
 };
 
@@ -25,24 +24,26 @@ export const canvasWebSocketRouter = new Hono<{ Bindings: Env; Variables: HonoVa
   // Authentication middleware for WebSocket connections
   // This needs to be robust and handle token-based auth typically passed via query params for WebSockets.
   .use('/:roomId/ws', async (c, next) => {
-    let user = c.get('user');
+    let user = c.get('user'); // Check if auth middleware already ran (e.g., global middleware)
 
     if (!user) {
-      const token = c.req.query('token');
+      const token = c.req.query('token'); // Standard way to pass token for WS
       if (!token) {
         return c.json({ error: 'Unauthorized', message: 'Auth token is required for WebSocket connection.' }, 401);
       }
       
+      // Validate the token (this is a simplified example, adapt your Better-Auth validation)
       try {
-        const sessionValue = await c.env.SESSIONS_KV.get(token);
-        if (sessionValue) {
-          const sessionData = JSON.parse(sessionValue);
-          if (sessionData.session && sessionData.user && new Date(sessionData.session.expires_at).getTime() > Date.now()) {
-            user = sessionData.user;
+        // Assuming your Better-Auth instance might be on c.env or you have a helper
+        // This is a conceptual placeholder for token validation logic.
+        // You might need to call a D1 query to validate the session token, similar to your /session endpoint.
+        const sessionResult = await c.env.DB.prepare(
+          "SELECT u.* FROM session s JOIN user u ON s.user_id = u.id WHERE s.token = ? AND s.expires_at > ?"
+        ).bind(token, new Date()).first();
+
+        if (sessionResult) {
+          user = sessionResult as { id: string; [key: string]: any };
           c.set('user', user);
-          } else {
-             return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
-          }
         } else {
           return c.json({ error: 'Unauthorized', message: 'Invalid or expired token.' }, 401);
         }
@@ -51,11 +52,6 @@ export const canvasWebSocketRouter = new Hono<{ Bindings: Env; Variables: HonoVa
         return c.json({ error: 'Unauthorized', message: 'Authentication error.' }, 401);
       }
     }
-    
-    if (!user) {
-        return c.json({ error: 'Unauthorized', message: 'Authentication failed.' }, 401);
-    }
-
     await next();
   })
 

@@ -6,11 +6,6 @@ import { getApiUrl } from './utils';
 // Use getApiUrl() directly instead of storing in a variable
 // to avoid circular dependency issues
 
-// Function to detect if the client is a mobile browser
-function isMobileBrowser(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
 // Function to save the token with logging
 function saveToken(token: string | null) {
     if (token) {
@@ -105,27 +100,14 @@ export function setAuthToken(token: string): void {
 // Enhanced login function that ensures credentials are included
 export async function enhancedLogin(email: string, password: string): Promise<any> {
     try {
-        const isMobile = isMobileBrowser();
-        console.log(`[Auth] Detected ${isMobile ? 'mobile' : 'desktop'} browser`);
-        
-        // Create fetch options with appropriate settings for the device type
-        const fetchOptions: RequestInit = {
+        const response = await fetch(`${getApiUrl()}/api/auth/sign-in/email`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ email, password }),
-            credentials: 'include', // Critical for cross-domain cookies
-            // Add cache control to prevent caching issues on mobile
-            cache: 'no-store'
-        };
-        
-        // Add mobile-specific headers if needed
-        if (isMobile) {
-            (fetchOptions.headers as Record<string, string>)['X-Client-Type'] = 'mobile';
-        }
-        
-        const response = await fetch(`${getApiUrl()}/api/auth/sign-in/email`, fetchOptions);
+            credentials: 'include' // Critical for cross-domain cookies
+        });
         
         // Check for token header
         const authToken = response.headers.get("set-auth-token") || 
@@ -140,8 +122,7 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                     headers: {
                         'Authorization': `Bearer ${authToken}`
                     },
-                    credentials: 'include',
-                    cache: 'no-store' // Prevent caching issues
+                    credentials: 'include'
                 });
                 
                 if (sessionResponse.ok) {
@@ -179,8 +160,7 @@ export async function enhancedLogin(email: string, password: string): Promise<an
                         headers: {
                             'Authorization': `Bearer ${responseData.token}`
                         },
-                        credentials: 'include',
-                        cache: 'no-store' // Prevent caching issues
+                        credentials: 'include'
                     });
                     
                     if (sessionResponse.ok) {
@@ -316,41 +296,62 @@ export async function enhancedSignup(email: string, password: string, name: stri
 
 // Enhanced logout function
 export async function enhancedLogout(): Promise<any> {
-    let finalResponse = { success: false, message: 'Logout failed' };
-    
-    try {
-        const isMobile = isMobileBrowser();
-        console.log(`[Auth] Logout on ${isMobile ? 'mobile' : 'desktop'} browser`);
+    try {        
+        // Get the current token
+        const token = localStorage.getItem('bearer_token');
         
-        // Call the main better-auth sign-out endpoint. This is the only call needed.
-        // It will handle session invalidation in both D1 and the KV store.
-        const signOutResponse = await fetch(`${getApiUrl()}/api/auth/sign-out`, {
-            method: 'POST',
-            credentials: 'include',
-            cache: 'no-store', // Prevent caching issues
-            headers: {
-                // Add mobile-specific headers if needed
-                ...(isMobile ? { 'X-Client-Type': 'mobile' } : {})
-            }
-        });
-        
-        if (signOutResponse.ok) {
-            finalResponse = { success: true, message: 'Signed out successfully' };
-            console.log('Successfully signed out via main auth endpoint.');
-        } else {
-            const errorData = await signOutResponse.json().catch(() => ({})) as { message?: string };
-            finalResponse = { success: false, message: errorData.message || `Sign-out failed with status: ${signOutResponse.status}` };
-            console.error('Sign-out via main auth endpoint failed.', finalResponse);
+        if (!token) {
+            // If no token, just clear local state
+            clearAuthToken();
+            return { success: true };
         }
+        
+        // First try to directly delete the session from the database
+        try {
+            const apiUrl = getApiUrl();
+            const response = await fetch(`${apiUrl}/api/protected/sessions/current`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            });
+            
+            if (response.ok) {
+                // If direct session deletion was successful, clear local state
+                clearAuthToken();
+                return { success: true };
+            }
+        } catch (directDeleteError) {
+            // If direct deletion fails, continue with standard sign-out
+            console.error('Direct session deletion failed, trying standard sign-out');
+        }
+        
+        // Use Better Auth's standard signOut method as fallback
+        try {
+            await authClient.signOut({
+                fetchOptions: {
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                }
+            });
+        } catch (authError) {
+            // Even if Better Auth sign-out fails, we should still clear local state
+            console.error('Better Auth sign-out error, clearing local state anyway');
+        }
+        
+        // Always clear the local token regardless of API success
+        clearAuthToken();
+        return { success: true };
     } catch (error) {
-        console.error('Error during sign-out process:', error);
-        finalResponse = { success: false, message: error instanceof Error ? error.message : 'An unknown error occurred' };
+        // Clear token even if there's an error
+        clearAuthToken();
+        return { error };
     }
-
-    // Clear local token regardless of API call success
-    clearAuthToken();
-
-    return finalResponse;
 }
 
 // Google login function
